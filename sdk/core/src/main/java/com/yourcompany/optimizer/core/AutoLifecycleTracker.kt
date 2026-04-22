@@ -5,96 +5,95 @@ import android.app.Application
 import android.os.Bundle
 
 /**
- * Automatically tracks all Activity lifecycle events and navigation timing.
- * Registered once via DroidPulse.start() — tracks every activity in the app.
+ * Automatically tracks all Activity lifecycle events.
+ *
+ * Every callback is wrapped in try/catch.
+ * If anything goes wrong inside DroidPulse, the host app is NEVER affected.
  */
 internal class AutoLifecycleTracker : Application.ActivityLifecycleCallbacks {
 
-    // Tracks create time per activity
-    private val createTimes = mutableMapOf<String, Long>()
-    // Tracks resume time per activity (for time-on-screen)
-    private val resumeTimes = mutableMapOf<String, Long>()
-    // Navigation stack
+    private val createTimes     = mutableMapOf<String, Long>()
+    private val resumeTimes     = mutableMapOf<String, Long>()
     private val navigationStack = mutableListOf<String>()
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-        val name = activity.javaClass.simpleName
-        createTimes[name] = System.currentTimeMillis()
-
-        DroidPulse.dispatcher.dispatch(
-            ScreenEvent(
-                screenName = name,
-                screenType = ScreenType.ACTIVITY,
-                eventType = LifecycleEventType.CREATED,
-                duration = null,
+        try {
+            val name = activity.javaClass.simpleName
+            createTimes[name] = System.currentTimeMillis()
+            dispatch(ScreenEvent(
+                screenName      = name,
+                screenType      = ScreenType.ACTIVITY,
+                eventType       = LifecycleEventType.CREATED,
                 navigationStack = navigationStack.toList()
-            )
-        )
-        Logger.debug("▶ $name created")
+            ))
+        } catch (e: Exception) { sdkError("onActivityCreated", e) }
     }
 
     override fun onActivityResumed(activity: Activity) {
-        val name = activity.javaClass.simpleName
-        resumeTimes[name] = System.currentTimeMillis()
+        try {
+            val name = activity.javaClass.simpleName
+            resumeTimes[name] = System.currentTimeMillis()
 
-        // Calculate time from create → resume (launch time)
-        val createTime = createTimes[name]
-        val launchDuration = if (createTime != null) System.currentTimeMillis() - createTime else null
+            val launchDuration = createTimes[name]?.let {
+                System.currentTimeMillis() - it
+            }
 
-        // Update navigation stack
-        navigationStack.remove(name)
-        navigationStack.add(name)
+            navigationStack.remove(name)
+            navigationStack.add(name)
 
-        DroidPulse.dispatcher.dispatch(
-            ScreenEvent(
-                screenName = name,
-                screenType = ScreenType.ACTIVITY,
-                eventType = LifecycleEventType.RESUMED,
-                duration = launchDuration,
+            dispatch(ScreenEvent(
+                screenName      = name,
+                screenType      = ScreenType.ACTIVITY,
+                eventType       = LifecycleEventType.RESUMED,
+                duration        = launchDuration,
                 navigationStack = navigationStack.toList()
-            )
-        )
-        Logger.debug("▶ $name resumed (launch: ${launchDuration}ms)")
+            ))
+            Logger.debug("▶ $name resumed (${launchDuration}ms to open)")
+        } catch (e: Exception) { sdkError("onActivityResumed", e) }
     }
 
     override fun onActivityPaused(activity: Activity) {
-        val name = activity.javaClass.simpleName
-
-        // Calculate time on screen
-        val resumeTime = resumeTimes[name]
-        val timeOnScreen = if (resumeTime != null) System.currentTimeMillis() - resumeTime else null
-
-        DroidPulse.dispatcher.dispatch(
-            ScreenEvent(
-                screenName = name,
-                screenType = ScreenType.ACTIVITY,
-                eventType = LifecycleEventType.PAUSED,
-                duration = timeOnScreen,
+        try {
+            val name = activity.javaClass.simpleName
+            val timeOnScreen = resumeTimes[name]?.let {
+                System.currentTimeMillis() - it
+            }
+            dispatch(ScreenEvent(
+                screenName      = name,
+                screenType      = ScreenType.ACTIVITY,
+                eventType       = LifecycleEventType.PAUSED,
+                duration        = timeOnScreen,
                 navigationStack = navigationStack.toList()
-            )
-        )
-        Logger.debug("⏸ $name paused (on screen: ${timeOnScreen}ms)")
+            ))
+            Logger.debug("⏸ $name paused (${timeOnScreen}ms on screen)")
+        } catch (e: Exception) { sdkError("onActivityPaused", e) }
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        val name = activity.javaClass.simpleName
-        createTimes.remove(name)
-        resumeTimes.remove(name)
-        navigationStack.remove(name)
-
-        DroidPulse.dispatcher.dispatch(
-            ScreenEvent(
-                screenName = name,
-                screenType = ScreenType.ACTIVITY,
-                eventType = LifecycleEventType.DESTROYED,
-                duration = null,
+        try {
+            val name = activity.javaClass.simpleName
+            createTimes.remove(name)
+            resumeTimes.remove(name)
+            navigationStack.remove(name)
+            dispatch(ScreenEvent(
+                screenName      = name,
+                screenType      = ScreenType.ACTIVITY,
+                eventType       = LifecycleEventType.DESTROYED,
                 navigationStack = navigationStack.toList()
-            )
-        )
-        Logger.debug("✖ $name destroyed")
+            ))
+        } catch (e: Exception) { sdkError("onActivityDestroyed", e) }
     }
 
     override fun onActivityStarted(activity: Activity) {}
     override fun onActivityStopped(activity: Activity) {}
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+
+    private fun dispatch(event: ScreenEvent) {
+        DroidPulse.dispatcher.dispatch(event)
+    }
+
+    // SDK internal error — log it, never throw to host app
+    private fun sdkError(callback: String, e: Exception) {
+        Logger.error("DroidPulse internal error in $callback (app unaffected): ${e.message}", e)
+    }
 }
