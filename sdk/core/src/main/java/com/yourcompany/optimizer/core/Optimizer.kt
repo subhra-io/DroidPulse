@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
-import android.os.StrictMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +26,7 @@ object DroidPulse {
 
     private var isInitialized = false
     private var config = DroidPulseConfig()
+    internal var startupProfiler: StartupProfiler? = null
 
     // SupervisorJob: if one tracker crashes, others keep running
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -90,6 +90,24 @@ object DroidPulse {
             }
         }
 
+        // ── PHASE 3 ──────────────────────────────────────────────────────
+
+        // 5. Crash + ANR detection
+        if (cfg.detectCrashes) {
+            safeStart("CrashDetector") {
+                CrashDetector().start()
+            }
+        }
+
+        // 6. Startup profiler
+        if (cfg.profileStartup) {
+            safeStart("StartupProfiler") {
+                val profiler = StartupProfiler(app)
+                startupProfiler = profiler
+                profiler.start()
+            }
+        }
+
         isInitialized = true
 
         // Startup time check — warn if > 30ms
@@ -114,6 +132,35 @@ object DroidPulse {
 
     fun isStarted() = isInitialized
     fun getConfig() = config
+
+    /**
+     * Track Compose NavController — call after rememberNavController().
+     *
+     * ```kotlin
+     * val navController = rememberNavController()
+     * DroidPulse.trackNavController(navController)
+     * ```
+     */
+    fun trackNavController(navController: Any) {
+        if (!isInitialized) {
+            Logger.warn("Call DroidPulse.start() before trackNavController()")
+            return
+        }
+        safeStart("ComposeTracker") {
+            ComposeTracker.trackNavController(navController)
+        }
+    }
+
+    /**
+     * Track a database query manually.
+     *
+     * ```kotlin
+     * val users = DroidPulse.trackDb("getAllUsers") { userDao.getAllUsers() }
+     * ```
+     */
+    fun <T> trackDb(queryName: String, dbName: String = "default", block: () -> T): T {
+        return DatabaseMonitor.track(queryName, dbName, block)
+    }
 
     /**
      * Zero crash guarantee wrapper.

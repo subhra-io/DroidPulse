@@ -22,52 +22,41 @@ package com.yourcompany.optimizer.core
  */
 data class DroidPulseConfig(
 
-    /**
-     * KILL SWITCH — Master on/off for the entire SDK.
-     * Set to BuildConfig.DEBUG to auto-disable in production.
-     * Default: true (on)
-     */
+    /** KILL SWITCH — Master on/off. Set to BuildConfig.DEBUG for production safety. */
     val enabled: Boolean = true,
 
-    /**
-     * Enable verbose debug logging in Logcat.
-     * Default: true
-     */
+    /** Enable verbose debug logging in Logcat. */
     val debug: Boolean = true,
 
-    /**
-     * Track memory usage automatically every 2 seconds.
-     * Default: true
-     */
+    /** Track memory usage automatically every 2 seconds. */
     val trackMemory: Boolean = true,
 
-    /**
-     * Track FPS and jank automatically every second.
-     * Default: true
-     */
+    /** Track FPS and jank automatically every second. */
     val trackFps: Boolean = true,
 
-    /**
-     * Enable real-time dashboard via WebSocket.
-     * Default: true
-     */
+    /** Enable real-time dashboard via WebSocket. */
     val enableDashboard: Boolean = true,
 
-    /**
-     * Port for the dashboard WebSocket server.
-     * Default: 8080
-     */
+    /** Port for the dashboard WebSocket server. */
     val dashboardPort: Int = 8080,
 
-    /**
-     * Memory polling interval in milliseconds.
-     * Default: 2000ms (2 seconds)
-     */
+    /** Memory polling interval in milliseconds. */
     val memoryIntervalMs: Long = 2000L,
 
-    /**
-     * FPS report interval in milliseconds.
-     * Default: 1000ms (1 second)
-     */
-    val fpsIntervalMs: Long = 1000L
+    /** FPS report interval in milliseconds. */
+    val fpsIntervalMs: Long = 1000L,
+
+    // ── PHASE 3 ──────────────────────────────────────────────────────────
+
+    /** Detect crashes, ANRs, and frozen UI (> 5s main thread block). */
+    val detectCrashes: Boolean = true,
+
+    /** Profile app startup time (cold/warm start). */
+    val profileStartup: Boolean = true,
+
+    /** Track Compose navigation (call DroidPulse.trackNavController() separately). */
+    val trackCompose: Boolean = true,
+
+    /** Track database queries (use DatabaseMonitor.track() in your DAO calls). */
+    val trackDatabase: Boolean = true
 )

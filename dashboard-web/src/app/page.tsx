@@ -11,11 +11,14 @@ import { HealthScore }      from '@/components/HealthScore'
 import { ScreenHeatmap }    from '@/components/ScreenHeatmap'
 import { SlowestApis }      from '@/components/SlowestApis'
 import { ExportReport }     from '@/components/ExportReport'
+import { CrashMonitor }     from '@/components/CrashMonitor'
+import { StartupProfiler }  from '@/components/StartupProfiler'
+import { DatabaseMonitor }  from '@/components/DatabaseMonitor'
 import { useWebSocket }     from '@/hooks/useWebSocket'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
-type Tab = 'overview' | 'flow' | 'network' | 'heatmap'
+type Tab = 'overview' | 'flow' | 'network' | 'heatmap' | 'diagnostics'
 
 export default function Dashboard() {
   const { events, connected } = useWebSocket(WS_URL)
@@ -27,10 +30,11 @@ export default function Dashboard() {
   const fpsEvents    = events.filter(e => e.type === 'fps')
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Overview',  icon: '📊' },
-    { id: 'flow',     label: 'Flow Trace',icon: '🗺️' },
-    { id: 'network',  label: 'Network',   icon: '🌐' },
-    { id: 'heatmap',  label: 'Heatmap',   icon: '🔥' },
+    { id: 'overview',     label: 'Overview',    icon: '📊' },
+    { id: 'flow',         label: 'Flow Trace',  icon: '🗺️' },
+    { id: 'network',      label: 'Network',     icon: '🌐' },
+    { id: 'heatmap',      label: 'Heatmap',     icon: '🔥' },
+    { id: 'diagnostics',  label: 'Diagnostics', icon: '🔬' },
   ]
 
   return (
@@ -146,6 +150,17 @@ export default function Dashboard() {
           <div className="space-y-6">
             <ScreenHeatmap screenEvents={screenEvents} apiEvents={apiEvents} />
             <ScreenTimings events={screenEvents} />
+          </div>
+        )}
+
+        {/* ── DIAGNOSTICS TAB ── */}
+        {tab === 'diagnostics' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <CrashMonitor events={events.filter(e => e.type === 'crash')} />
+              <StartupProfiler events={events.filter(e => e.type === 'startup')} />
+            </div>
+            <DatabaseMonitor events={events.filter(e => e.type === 'database')} />
           </div>
         )}
 
