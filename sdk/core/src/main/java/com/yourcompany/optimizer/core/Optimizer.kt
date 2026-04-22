@@ -1,89 +1,80 @@
 package com.yourcompany.optimizer.core
 
+import android.app.Activity
 import android.app.Application
-import android.util.Log
+import android.os.Bundle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 /**
- * Main entry point for the Optimizer SDK.
- * 
- * Usage:
+ * Main entry point for DroidPulse SDK.
+ *
+ * Minimal usage - just ONE line in your MainActivity:
  * ```
- * Optimizer.init(
- *     app = this,
- *     config = OptimizerConfig(debug = true)
- * )
+ * override fun onCreate(...) {
+ *     super.onCreate(...)
+ *     DroidPulse.start(this)
+ * }
  * ```
+ *
+ * That's it! Everything else is automatic.
  */
-object Optimizer {
-    
+object DroidPulse {
+
     private var isInitialized = false
-    private lateinit var application: Application
-    private lateinit var configuration: OptimizerConfig
-    
+
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val dispatcher = Dispatcher()
-    
+
     /**
-     * Initialize the Optimizer SDK.
-     * Must be called in Application.onCreate()
+     * Start DroidPulse from any Activity.
+     * Automatically tracks all activities, memory, FPS, and starts dashboard server.
      */
-    fun init(app: Application, config: OptimizerConfig = OptimizerConfig()) {
-        if (isInitialized) {
-            Logger.warn("Optimizer already initialized")
-            return
-        }
-        
-        application = app
-        configuration = config
-        
+    fun start(activity: Activity, config: DroidPulseConfig = DroidPulseConfig()) {
+        if (isInitialized) return
+
+        val app = activity.application
+
         Logger.init(config.debug)
-        Logger.info("Initializing Optimizer SDK v${Constants.SDK_VERSION}")
-        
-        // Register lifecycle callbacks
-        app.registerActivityLifecycleCallbacks(LifecycleRegistry)
-        
-        isInitialized = true
-        Logger.info("Optimizer SDK initialized successfully")
-    }
-    
-    /**
-     * Check if SDK is initialized
-     */
-    fun isInitialized(): Boolean = isInitialized
-    
-    /**
-     * Get current configuration
-     */
-    fun getConfig(): OptimizerConfig {
-        checkInitialized()
-        return configuration
-    }
-    
-    /**
-     * Get application instance
-     */
-    fun getApplication(): Application {
-        checkInitialized()
-        return application
-    }
-    
-    /**
-     * Shutdown the SDK and release resources
-     */
-    fun shutdown() {
-        if (!isInitialized) return
-        
-        Logger.info("Shutting down Optimizer SDK")
-        application.unregisterActivityLifecycleCallbacks(LifecycleRegistry)
-        isInitialized = false
-    }
-    
-    private fun checkInitialized() {
-        if (!isInitialized) {
-            throw IllegalStateException("Optimizer not initialized. Call Optimizer.init() first.")
+        Logger.info("DroidPulse starting...")
+
+        // Auto-register lifecycle tracking for ALL activities
+        app.registerActivityLifecycleCallbacks(AutoLifecycleTracker())
+
+        // Auto-start memory tracking
+        if (config.trackMemory) {
+            AutoMemoryTracker(app).start()
         }
+
+        // Auto-start FPS tracking
+        if (config.trackFps) {
+            AutoFpsTracker().start()
+        }
+
+        // Auto-start WebSocket server for dashboard
+        if (config.enableDashboard) {
+            AutoWebSocketServer(config.dashboardPort).start()
+        }
+
+        isInitialized = true
+        Logger.info("DroidPulse started on port ${config.dashboardPort} ✅")
+    }
+
+    fun isStarted() = isInitialized
+
+    // Keep backward compat
+    internal val Companion = this
+}
+
+// Keep old Optimizer name working too
+object Optimizer {
+    val scope get() = DroidPulse.scope
+    val dispatcher get() = DroidPulse.dispatcher
+
+    fun init(app: Application, config: OptimizerConfig = OptimizerConfig()) {
+        Logger.init(config.debug)
+        app.registerActivityLifecycleCallbacks(LifecycleRegistry)
+        Logger.info("Optimizer SDK initialized")
     }
 }

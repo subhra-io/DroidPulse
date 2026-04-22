@@ -1,8 +1,7 @@
 package com.yourcompany.optimizer.transport
 
-import com.yourcompany.optimizer.core.Event
+import com.yourcompany.optimizer.core.DroidPulse
 import com.yourcompany.optimizer.core.Logger
-import com.yourcompany.optimizer.core.Optimizer
 import kotlinx.coroutines.launch
 import org.java_websocket.WebSocket
 import org.java_websocket.handshake.ClientHandshake
@@ -22,9 +21,9 @@ class WebSocketServer(private val port: Int = 8080) {
             server = Server(InetSocketAddress(port))
             server?.start()
             
-            // Subscribe to events and broadcast
-            Optimizer.scope.launch {
-                Optimizer.dispatcher.events.collect { event ->
+            // Subscribe to all events and broadcast to dashboard
+            DroidPulse.scope.launch {
+                DroidPulse.dispatcher.events.collect { event ->
                     broadcast(EventSerializer.serialize(event))
                 }
             }
@@ -48,7 +47,7 @@ class WebSocketServer(private val port: Int = 8080) {
     private fun broadcast(message: String) {
         clients.forEach { client ->
             try {
-                client.send(message)
+                if (client.isOpen) client.send(message)
             } catch (e: Exception) {
                 Logger.error("Failed to send message to client", e)
             }
@@ -68,7 +67,6 @@ class WebSocketServer(private val port: Int = 8080) {
         }
         
         override fun onMessage(conn: WebSocket, message: String) {
-            // Handle commands from dashboard if needed
             Logger.debug("Received message: $message")
         }
         

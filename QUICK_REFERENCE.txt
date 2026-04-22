@@ -1,0 +1,132 @@
+═══════════════════════════════════════════════════════════════
+  DROIDPULSE - QUICK REFERENCE
+═══════════════════════════════════════════════════════════════
+
+📦 REPOSITORY: https://github.com/subhra-io/DroidPulse
+
+═══════════════════════════════════════════════════════════════
+  STEP 1: PUBLISH TO GITHUB
+═══════════════════════════════════════════════════════════════
+
+git init
+git add .
+git commit -m "Initial commit - DroidPulse SDK v1.0.0"
+git remote add origin https://github.com/subhra-io/DroidPulse.git
+git push -u origin main
+
+Then: Create release on GitHub (tag: 1.0.0)
+
+═══════════════════════════════════════════════════════════════
+  STEP 2: ADD TO PEHCHAAN PROJECT
+═══════════════════════════════════════════════════════════════
+
+FILE 1: settings.gradle.kts
+───────────────────────────────────────────────────────────────
+maven { url = uri("https://jitpack.io") }
+
+
+FILE 2: app/build.gradle
+───────────────────────────────────────────────────────────────
+implementation 'com.github.subhra-io.DroidPulse:core:1.0.0'
+implementation 'com.github.subhra-io.DroidPulse:lifecycle:1.0.0'
+implementation 'com.github.subhra-io.DroidPulse:network:1.0.0'
+implementation 'com.github.subhra-io.DroidPulse:memory:1.0.0'
+implementation 'com.github.subhra-io.DroidPulse:fps:1.0.0'
+implementation 'com.github.subhra-io.DroidPulse:transport:1.0.0'
+
+
+FILE 3: PehchaanApplication.kt (imports)
+───────────────────────────────────────────────────────────────
+import com.yourcompany.optimizer.core.Optimizer
+import com.yourcompany.optimizer.core.OptimizerConfig
+import com.yourcompany.optimizer.lifecycle.ActivityTracker
+import com.yourcompany.optimizer.memory.MemoryTracker
+import com.yourcompany.optimizer.fps.FpsTracker
+import com.yourcompany.optimizer.transport.WebSocketServer
+
+
+FILE 3: PehchaanApplication.kt (onCreate)
+───────────────────────────────────────────────────────────────
+if (BuildConfig.DEBUG) {
+    initializeDroidPulse()
+}
+
+
+FILE 3: PehchaanApplication.kt (new method)
+───────────────────────────────────────────────────────────────
+private fun initializeDroidPulse() {
+    try {
+        Optimizer.init(this, OptimizerConfig(debug = true))
+        ActivityTracker(this).start()
+        MemoryTracker(this).start()
+        FpsTracker().start()
+        WebSocketServer.start(port = 8080)
+        Log.d("DroidPulse", "✅ Initialized")
+    } catch (e: Exception) {
+        Log.e("DroidPulse", "❌ Failed: ${e.message}", e)
+    }
+}
+
+
+FILE 4: RetrofitClient.kt (import)
+───────────────────────────────────────────────────────────────
+import com.yourcompany.optimizer.network.OptimizerInterceptor
+
+
+FILE 4: RetrofitClient.kt (add interceptor)
+───────────────────────────────────────────────────────────────
+if(BuildConfig.DEBUG){
+    addInterceptor(loggingInterceptor)
+    addInterceptor(OptimizerInterceptor())  // ← ADD THIS
+}
+
+═══════════════════════════════════════════════════════════════
+  STEP 3: RUN DASHBOARD
+═══════════════════════════════════════════════════════════════
+
+git clone https://github.com/subhra-io/DroidPulse.git
+cd DroidPulse/dashboard-web
+npm install
+npm run dev
+
+Open: http://localhost:3000
+
+═══════════════════════════════════════════════════════════════
+  WHAT YOU'LL SEE
+═══════════════════════════════════════════════════════════════
+
+Logcat:
+  D/DroidPulse: ✅ Performance monitoring initialized
+  D/DroidPulse: 📊 Dashboard: http://localhost:3000
+
+Dashboard:
+  🟢 Connected
+  📱 Screen timings
+  🌐 API calls
+  💾 Memory graphs
+  📊 FPS monitoring
+
+═══════════════════════════════════════════════════════════════
+  DOCUMENTATION FILES
+═══════════════════════════════════════════════════════════════
+
+⭐ PUBLISH_NOW.md                  - Publishing commands
+⭐ PEHCHAAN_INTEGRATION_STEPS.md   - Detailed integration
+⭐ WHERE_TO_ADD.md                 - Visual guide
+
+   README.md                       - SDK documentation
+   GITHUB_JITPACK_GUIDE.md         - Complete guide
+   BEFORE_PUSH_CHECKLIST.md        - Pre-push verification
+   FINAL_SUMMARY.md                - Complete overview
+
+═══════════════════════════════════════════════════════════════
+  KEY POINTS
+═══════════════════════════════════════════════════════════════
+
+✅ Only 4 files to edit in Pehchaan
+✅ Only runs in DEBUG mode
+✅ Zero production impact
+✅ No SDK folder in your project
+✅ app/ folder NOT pushed to GitHub
+
+═══════════════════════════════════════════════════════════════

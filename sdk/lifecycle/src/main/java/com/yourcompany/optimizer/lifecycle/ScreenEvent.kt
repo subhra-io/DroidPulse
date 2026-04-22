@@ -3,7 +3,7 @@ package com.yourcompany.optimizer.lifecycle
 import com.yourcompany.optimizer.core.Event
 
 /**
- * Screen lifecycle event
+ * Screen lifecycle event with navigation tracking
  */
 data class ScreenEvent(
     override val timestamp: Long = System.currentTimeMillis(),
@@ -12,6 +12,7 @@ data class ScreenEvent(
     val screenType: ScreenType,
     val eventType: LifecycleEventType,
     val duration: Long? = null,
+    val navigationStack: List<String> = emptyList(),
     val metadata: Map<String, Any> = emptyMap()
 ) : Event()
 

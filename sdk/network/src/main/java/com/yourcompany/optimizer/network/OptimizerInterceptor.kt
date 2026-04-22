@@ -1,17 +1,17 @@
 package com.yourcompany.optimizer.network
 
+import com.yourcompany.optimizer.core.DroidPulse
 import com.yourcompany.optimizer.core.Logger
-import com.yourcompany.optimizer.core.Optimizer
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
 
 /**
- * OkHttp interceptor for tracking network requests
- * 
- * Usage:
+ * OkHttp interceptor for tracking network requests.
+ *
+ * Add to your OkHttpClient:
  * ```
- * val client = OkHttpClient.Builder()
+ * OkHttpClient.Builder()
  *     .addInterceptor(OptimizerInterceptor())
  *     .build()
  * ```
@@ -32,8 +32,7 @@ class OptimizerInterceptor : Interceptor {
             error = e
             throw e
         } finally {
-            val endTime = System.currentTimeMillis()
-            val duration = endTime - startTime
+            val duration = System.currentTimeMillis() - startTime
             
             val event = ApiEvent(
                 url = request.url.toString(),
@@ -43,20 +42,12 @@ class OptimizerInterceptor : Interceptor {
                 responseSize = response?.body?.contentLength() ?: 0,
                 duration = duration,
                 success = error == null,
-                errorMessage = error?.message,
-                headers = request.headers.toMap()
+                errorMessage = error?.message
             )
             
-            Optimizer.dispatcher.dispatch(event)
+            DroidPulse.dispatcher.dispatch(event)
             
-            Logger.debug(
-                "API ${request.method} ${request.url} - " +
-                "${response?.code ?: "ERROR"} in ${duration}ms"
-            )
+            Logger.debug("API ${request.method} ${request.url} → ${response?.code ?: "ERR"} in ${duration}ms")
         }
     }
-}
-
-private fun okhttp3.Headers.toMap(): Map<String, String> {
-    return names().associateWith { get(it) ?: "" }
 }
