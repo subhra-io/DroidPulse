@@ -23,7 +23,7 @@ build/
 # Node
 node_modules/
 .next/
-out/
+/out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -40,5 +40,9 @@ yarn-error.log*
 Thumbs.db
 
 # App folder (from different project - don't push to GitHub)
-app/
+/app/
+
+# Environment files (contain personal IP/secrets)
+.env.local
+.env*.local
 
