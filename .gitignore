@@ -46,3 +46,12 @@ Thumbs.db
 .env.local
 .env*.local
 
+# SQLite database files (cloud backend local data)
+*.db
+*.db-shm
+*.db-wal
+
+# Node modules
+cloud-backend/node_modules/
+ci-tool/node_modules/
+
