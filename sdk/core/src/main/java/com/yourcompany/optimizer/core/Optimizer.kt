@@ -2,7 +2,6 @@ package com.yourcompany.optimizer.core
 
 import android.app.Activity
 import android.app.Application
-import android.os.Bundle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -10,15 +9,23 @@ import kotlinx.coroutines.SupervisorJob
 /**
  * Main entry point for DroidPulse SDK.
  *
- * Minimal usage - just ONE line in your MainActivity:
+ * Usage in Application class (recommended):
+ * ```
+ * class MyApp : Application() {
+ *     override fun onCreate() {
+ *         super.onCreate()
+ *         DroidPulse.start(this)
+ *     }
+ * }
+ * ```
+ *
+ * Or in MainActivity:
  * ```
  * override fun onCreate(...) {
  *     super.onCreate(...)
  *     DroidPulse.start(this)
  * }
  * ```
- *
- * That's it! Everything else is automatic.
  */
 object DroidPulse {
 
@@ -27,47 +34,36 @@ object DroidPulse {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val dispatcher = Dispatcher()
 
-    /**
-     * Start DroidPulse from any Activity.
-     * Automatically tracks all activities, memory, FPS, and starts dashboard server.
-     */
+    /** Start from Application class — recommended, tracks from app launch */
+    fun start(app: Application, config: DroidPulseConfig = DroidPulseConfig()) {
+        if (isInitialized) return
+        init(app, config)
+    }
+
+    /** Start from any Activity */
     fun start(activity: Activity, config: DroidPulseConfig = DroidPulseConfig()) {
         if (isInitialized) return
+        init(activity.application, config)
+    }
 
-        val app = activity.application
-
+    private fun init(app: Application, config: DroidPulseConfig) {
         Logger.init(config.debug)
         Logger.info("DroidPulse starting...")
 
-        // Auto-register lifecycle tracking for ALL activities
         app.registerActivityLifecycleCallbacks(AutoLifecycleTracker())
 
-        // Auto-start memory tracking
-        if (config.trackMemory) {
-            AutoMemoryTracker(app).start()
-        }
-
-        // Auto-start FPS tracking
-        if (config.trackFps) {
-            AutoFpsTracker().start()
-        }
-
-        // Auto-start WebSocket server for dashboard
-        if (config.enableDashboard) {
-            AutoWebSocketServer(config.dashboardPort).start()
-        }
+        if (config.trackMemory) AutoMemoryTracker(app).start()
+        if (config.trackFps) AutoFpsTracker().start()
+        if (config.enableDashboard) AutoWebSocketServer(config.dashboardPort).start()
 
         isInitialized = true
-        Logger.info("DroidPulse started on port ${config.dashboardPort} ✅")
+        Logger.info("DroidPulse started ✅  Dashboard port: ${config.dashboardPort}")
     }
 
     fun isStarted() = isInitialized
-
-    // Keep backward compat
-    internal val Companion = this
 }
 
-// Keep old Optimizer name working too
+// Backward compatibility
 object Optimizer {
     val scope get() = DroidPulse.scope
     val dispatcher get() = DroidPulse.dispatcher
