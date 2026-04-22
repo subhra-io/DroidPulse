@@ -108,6 +108,21 @@ object DroidPulse {
             }
         }
 
+        // ── PHASE 4 ──────────────────────────────────────────────────────
+
+        // 7. Cloud uploader
+        if (cfg.cloud != null) {
+            safeStart("CloudUploader") {
+                val appVersion = try {
+                    app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "unknown"
+                } catch (_: Exception) { "unknown" }
+
+                val buildType = if (cfg.debug) "debug" else "release"
+
+                CloudUploader(app, cfg.cloud, appVersion, buildType).start()
+            }
+        }
+
         isInitialized = true
 
         // Startup time check — warn if > 30ms

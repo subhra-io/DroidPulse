@@ -1,0 +1,22 @@
+{
+  "name": "droidpulse-cloud",
+  "version": "1.0.0",
+  "description": "DroidPulse Cloud Backend — SaaS API server",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "migrate": "node src/db/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "ws": "^8.16.0",
+    "better-sqlite3": "^9.4.3",
+    "uuid": "^9.0.0",
+    "dotenv": "^16.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}

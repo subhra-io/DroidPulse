@@ -58,5 +58,15 @@ data class DroidPulseConfig(
     val trackCompose: Boolean = true,
 
     /** Track database queries (use DatabaseMonitor.track() in your DAO calls). */
-    val trackDatabase: Boolean = true
+    val trackDatabase: Boolean = true,
+
+    // ── PHASE 4 ──────────────────────────────────────────────────────────
+
+    /**
+     * Cloud configuration for team dashboards, version comparison, and CI/CD.
+     * Get your API key from: https://dashboard.droidpulse.dev
+     *
+     * Set to null to use local dashboard only (default).
+     */
+    val cloud: CloudConfig? = null
 )

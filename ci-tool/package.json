@@ -1,0 +1,14 @@
+{
+  "name": "droidpulse-ci",
+  "version": "1.0.0",
+  "description": "DroidPulse CI/CD CLI — performance regression detection",
+  "bin": {
+    "droidpulse-ci": "./bin/cli.js"
+  },
+  "scripts": {
+    "test": "node bin/cli.js report --help"
+  },
+  "dependencies": {
+    "commander": "^11.1.0"
+  }
+}
