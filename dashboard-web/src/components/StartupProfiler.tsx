@@ -27,8 +27,8 @@ export function StartupProfiler({ events }: Props) {
     )
   }
 
-  const col = startupColor(latest.totalMs)
-  const maxMs = Math.max(latest.totalMs, 1000)
+  const col = startupColor(latest.totalMs ?? 0)
+  const maxMs = Math.max(latest.totalMs ?? 0, 1000)
 
   return (
     <div className="bg-dark-card border border-dark-border rounded-lg p-6">
@@ -46,7 +46,7 @@ export function StartupProfiler({ events }: Props) {
       <div className="flex items-center gap-4 mb-6 p-4 bg-dark-bg rounded-xl">
         <div>
           <div className={`text-4xl font-black ${col.text}`}>
-            {latest.totalMs}
+            {latest.totalMs ?? 0}
             <span className="text-lg text-gray-500 font-normal">ms</span>
           </div>
           <div className="text-sm text-gray-400 mt-1">Total startup time</div>
@@ -57,7 +57,7 @@ export function StartupProfiler({ events }: Props) {
           <div className="h-3 bg-dark-border rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-700 ${col.bar}`}
-              style={{ width: `${Math.min((latest.totalMs / 3000) * 100, 100)}%` }}
+              style={{ width: `${Math.min(((latest.totalMs ?? 0) / 3000) * 100, 100)}%` }}
             />
           </div>
           <div className="flex justify-between text-xs text-gray-600 mt-1">
@@ -104,7 +104,7 @@ export function StartupProfiler({ events }: Props) {
         <div>
           <div className="text-xs text-gray-500 mb-2 uppercase tracking-wide">Timeline</div>
           <div className="space-y-1">
-            {latest.milestones.map((m: any, i: number) => (
+            {latest.milestones.filter((m: any) => m?.elapsedMs != null).map((m: any, i: number) => (
               <div key={i} className="flex items-center gap-3">
                 {/* Time marker */}
                 <div className="text-xs font-mono text-gray-500 w-16 text-right flex-shrink-0">
