@@ -86,9 +86,9 @@ internal object CommandHandler {
             "lifecycle" -> ScreenEvent(
                 timestamp  = ts,
                 screenName = json.optString("screenName", "UnknownScreen"),
-                screenType = json.optString("screenType", "ACTIVITY"),
-                eventType  = json.optString("eventType", "RESUMED"),
-                duration   = if (json.has("duration")) json.getInt("duration") else null
+                screenType = runCatching { ScreenType.valueOf(json.optString("screenType", "ACTIVITY")) }.getOrDefault(ScreenType.ACTIVITY),
+                eventType  = runCatching { LifecycleEventType.valueOf(json.optString("eventType", "RESUMED")) }.getOrDefault(LifecycleEventType.RESUMED),
+                duration   = if (json.has("duration")) json.getInt("duration").toLong() else null
             )
 
             "memory" -> object : Event() {
