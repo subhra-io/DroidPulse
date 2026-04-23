@@ -71,5 +71,13 @@ export function useWebSocket(url: string) {
     }
   }, [connect])
 
-  return { events, connected }
+  const sendCommand = useCallback((cmd: object) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(cmd))
+    } else {
+      console.warn('[DroidPulse] Cannot send command — not connected')
+    }
+  }, [])
+
+  return { events, connected, sendCommand }
 }

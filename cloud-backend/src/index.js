@@ -184,6 +184,61 @@ app.get('/api/sessions/:id/events', authenticate, (req, res) => {
   res.json({ events })
 })
 
+// ── GET /api/sessions/:id/export — Export session as JSON or CSV ──────────────
+app.get('/api/sessions/:id/export', authenticate, (req, res) => {
+  const { format = 'json' } = req.query
+
+  const session = db.prepare('SELECT * FROM sessions WHERE id = ? AND project_id = ?')
+    .get(req.params.id, req.project.id)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+
+  const events = db.prepare(
+    'SELECT * FROM events WHERE session_id = ? ORDER BY timestamp ASC'
+  ).all(req.params.id).map(e => ({ ...JSON.parse(e.data), _id: e.id }))
+
+  if (format === 'csv') {
+    // Flatten events to CSV
+    const allKeys = new Set()
+    events.forEach(e => Object.keys(e).forEach(k => allKeys.add(k)))
+    const keys = [...allKeys]
+    const escape = v => {
+      if (v == null) return ''
+      const s = String(v)
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const rows = [
+      keys.join(','),
+      ...events.map(e => keys.map(k => escape(e[k])).join(','))
+    ]
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', `attachment; filename="session-${req.params.id.slice(0,8)}.csv"`)
+    return res.send(rows.join('\n'))
+  }
+
+  // JSON export
+  const payload = {
+    exportedAt:  new Date().toISOString(),
+    session,
+    eventCount:  events.length,
+    events,
+  }
+  res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Content-Disposition', `attachment; filename="session-${req.params.id.slice(0,8)}.json"`)
+  res.json(payload)
+})
+
+// ── DELETE /api/sessions/:id — Delete a session ───────────────────────────────
+app.delete('/api/sessions/:id', authenticate, (req, res) => {
+  const session = db.prepare('SELECT id FROM sessions WHERE id = ? AND project_id = ?')
+    .get(req.params.id, req.project.id)
+  if (!session) return res.status(404).json({ error: 'Session not found' })
+
+  db.prepare('DELETE FROM events WHERE session_id = ?').run(req.params.id)
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id)
+  res.json({ deleted: req.params.id })
+})
+
 // ── GET /api/compare — Version comparison ────────────────────────────────────
 app.get('/api/compare', authenticate, (req, res) => {
   const { v1, v2 } = req.query

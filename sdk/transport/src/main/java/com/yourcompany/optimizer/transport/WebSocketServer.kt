@@ -67,7 +67,9 @@ class WebSocketServer(private val port: Int = 8080) {
         }
         
         override fun onMessage(conn: WebSocket, message: String) {
-            Logger.debug("Received message: $message")
+            Logger.debug("Received message from dashboard: $message")
+            // Route to CommandHandler — handles reproduce_trace, replay_event, ping, etc.
+            CommandHandler.handle(message)
         }
         
         override fun onError(conn: WebSocket?, ex: Exception) {

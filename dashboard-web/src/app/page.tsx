@@ -1,193 +1,276 @@
 'use client'
 
-import { useState } from 'react'
-import { ScreenTimings }    from '@/components/ScreenTimings'
-import { ApiCalls }         from '@/components/ApiCalls'
-import { MemoryGraph }      from '@/components/MemoryGraph'
-import { FpsGraph }         from '@/components/FpsGraph'
-import { ConnectionStatus } from '@/components/ConnectionStatus'
-import { FlowTrace }        from '@/components/FlowTrace'
-import { HealthScore }      from '@/components/HealthScore'
-import { ScreenHeatmap }    from '@/components/ScreenHeatmap'
-import { SlowestApis }      from '@/components/SlowestApis'
-import { ExportReport }     from '@/components/ExportReport'
-import { CrashMonitor }     from '@/components/CrashMonitor'
-import { StartupProfiler }  from '@/components/StartupProfiler'
-import { DatabaseMonitor }  from '@/components/DatabaseMonitor'
-import { useWebSocket }     from '@/hooks/useWebSocket'
-import { useCloudEvents }   from '@/hooks/useCloudEvents'
+import { useState, useMemo } from 'react'
+import { SplashScreen }    from '@/components/SplashScreen'
+import { useWebSocket }    from '@/hooks/useWebSocket'
+import { useCloudEvents }  from '@/hooks/useCloudEvents'
+import { FlowTrace }       from '@/components/FlowTrace'
+import { NetworkTab }      from '@/components/NetworkTab'
+import { HeatmapTab }     from '@/components/HeatmapTab'
+import { DiagnosticsTab }  from '@/components/DiagnosticsTab'
+import { OverviewTab }        from '@/components/OverviewTab'
+import { SessionHistoryTab }  from '@/components/SessionHistoryTab'
+import { ReplayBanner }       from '@/components/ReplayBanner'
+import { useReproduceTrace }  from '@/hooks/useReproduceTrace'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
-type Tab = 'overview' | 'flow' | 'network' | 'heatmap' | 'diagnostics'
+type Tab = 'overview' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions'
+
+const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    id: 'overview', label: 'OVERVIEW',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" />
+        <rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    id: 'flow', label: 'FLOW TRACE',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <polyline points="1,12 5,6 9,9 13,3" /><circle cx="13" cy="3" r="1.5" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'network', label: 'NETWORK',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="6" /><ellipse cx="8" cy="8" rx="3" ry="6" />
+        <line x1="2" y1="8" x2="14" y2="8" />
+      </svg>
+    ),
+  },
+  {
+    id: 'heatmap', label: 'HEATMAP',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <rect x="1" y="1" width="4" height="4" rx="0.5" opacity="0.4" />
+        <rect x="6" y="1" width="4" height="4" rx="0.5" opacity="0.7" />
+        <rect x="11" y="1" width="4" height="4" rx="0.5" opacity="1" />
+        <rect x="1" y="6" width="4" height="4" rx="0.5" opacity="0.6" />
+        <rect x="6" y="6" width="4" height="4" rx="0.5" opacity="0.9" />
+        <rect x="11" y="6" width="4" height="4" rx="0.5" opacity="0.5" />
+        <rect x="1" y="11" width="4" height="4" rx="0.5" opacity="0.3" />
+        <rect x="6" y="11" width="4" height="4" rx="0.5" opacity="0.5" />
+        <rect x="11" y="11" width="4" height="4" rx="0.5" opacity="0.8" />
+      </svg>
+    ),
+  },
+  {
+    id: 'diagnostics', label: 'DIAGNOSTICS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="6" /><line x1="8" y1="5" x2="8" y2="8" /><circle cx="8" cy="10.5" r="0.75" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'sessions', label: 'SESSIONS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="2" y="3" width="12" height="2.5" rx="0.5" /><rect x="2" y="7" width="12" height="2.5" rx="0.5" /><rect x="2" y="11" width="7" height="2.5" rx="0.5" />
+      </svg>
+    ),
+  },
+]
 
 export default function Dashboard() {
-  const { events: liveEvents, connected } = useWebSocket(WS_URL)
+  const { events: liveEvents, connected, sendCommand } = useWebSocket(WS_URL)
   const { events, loading, latestSession, cloudConnected } = useCloudEvents(liveEvents)
-  const [tab, setTab] = useState<Tab>('overview')
+  const [tab, setTab]               = useState<Tab>('overview')
+  const [networkSub, setNetworkSub] = useState<'live' | 'analysis' | 'security'>('analysis')
+  const [splashDone, setSplashDone] = useState(false)
+  const { state: replay, reproduce, pause, resume, reset: exitReplay } = useReproduceTrace(sendCommand)
 
-  const screenEvents = events.filter(e => e.type === 'lifecycle')
-  const apiEvents    = events.filter(e => e.type === 'network')
-  const memoryEvents = events.filter(e => e.type === 'memory')
-  const fpsEvents    = events.filter(e => e.type === 'fps')
+  // When replaying, all tabs show the replayed events instead of live events
+  const activeEvents = replay.phase !== 'idle' ? replay.visibleEvents : events
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'overview',     label: 'Overview',    icon: '📊' },
-    { id: 'flow',         label: 'Flow Trace',  icon: '🗺️' },
-    { id: 'network',      label: 'Network',     icon: '🌐' },
-    { id: 'heatmap',      label: 'Heatmap',     icon: '🔥' },
-    { id: 'diagnostics',  label: 'Diagnostics', icon: '🔬' },
-  ]
+  const screenEvents = activeEvents.filter(e => e.type === 'lifecycle')
+  const apiEvents    = activeEvents.filter(e => e.type === 'network')
+  const memoryEvents = activeEvents.filter(e => e.type === 'memory')
+  const fpsEvents    = activeEvents.filter(e => e.type === 'fps')
 
   return (
-    <main className="min-h-screen bg-dark-bg">
-      {/* Top Nav */}
-      <div className="border-b border-dark-border bg-dark-card sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-black text-white">⚡ DroidPulse</span>
-            <span className="text-xs text-gray-500 bg-dark-bg px-2 py-0.5 rounded">v1.1.0</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-500 font-mono">{WS_URL}</span>
-            <ConnectionStatus connected={connected} />
-          </div>
+    <main className="min-h-screen bg-[#0d0d0d] text-white flex">
+      {!splashDone && <SplashScreen onComplete={() => setSplashDone(true)} />}
+      <ReplayBanner
+        state={replay}
+        onPause={pause}
+        onResume={resume}
+        onExit={() => { sendCommand({ cmd: 'stop_replay' }); exitReplay() }}
+      />
+
+      {/* ── SIDEBAR ── */}
+      <aside className="w-52 min-h-screen bg-[#0d0d0d] border-r border-[#1e1e1e] flex flex-col flex-shrink-0">
+        {/* Brand */}
+        <div className="px-5 pt-6 pb-8">
+          <div className="text-[10px] font-mono text-gray-500 tracking-widest">SYSTEM_KERNEL</div>
+          <div className="text-[10px] font-mono text-gray-700 mt-0.5">NODE_X88_01</div>
         </div>
 
-        {/* Tabs */}
-        <div className="max-w-7xl mx-auto px-6 flex gap-1 pb-0">
-          {tabs.map(t => (
+        {/* Nav */}
+        <nav className="flex-1 px-2 space-y-0.5">
+          {NAV.map(n => (
             <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === t.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300'
+              key={n.id}
+              onClick={() => setTab(n.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded text-xs font-mono tracking-widest transition-colors ${
+                tab === n.id
+                  ? 'bg-[#1a2a3a] text-blue-400 border-l-2 border-blue-500'
+                  : 'text-gray-500 hover:text-gray-300 hover:bg-[#161616]'
               }`}
             >
-              {t.icon} {t.label}
+              {n.icon}
+              {n.label}
             </button>
           ))}
-        </div>
-      </div>
+        </nav>
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
-
-        {/* Connection hint */}
-        {!connected && (
-          <div className="mb-4 p-3 bg-yellow-950/30 border border-yellow-800 rounded-lg text-xs text-yellow-400">
-            ⚠️ Not connected. Run: <span className="font-mono bg-dark-bg px-1 rounded">adb forward tcp:8080 tcp:8080</span>
-            &nbsp;then open your app.
+        {/* Bottom links */}
+        <div className="px-2 pb-6 space-y-0.5">
+          <div className="flex items-center gap-3 px-3 py-2.5 text-xs font-mono text-gray-600 tracking-widest">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="2" y="2" width="12" height="12" rx="1" /><line x1="5" y1="6" x2="11" y2="6" /><line x1="5" y1="9" x2="9" y2="9" />
+            </svg>
+            DOCS
           </div>
-        )}
+          <div className="flex items-center gap-3 px-3 py-2.5 text-xs font-mono text-gray-600 tracking-widest">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M10 2H6L5 5H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1h-2L10 2z" />
+            </svg>
+            LOGOUT
+          </div>
+        </div>
+      </aside>
 
-        {/* Cloud status */}
-        <div className="mb-4 flex items-center gap-3 text-xs text-gray-500">
-          <span className={`flex items-center gap-1 ${connected ? 'text-green-400' : 'text-gray-600'}`}>
-            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-gray-600'}`} />
-            Live WebSocket {connected ? 'connected' : 'disconnected'}
-          </span>
-          <span className="text-gray-700">|</span>
-          <span className={`flex items-center gap-1 ${cloudConnected ? 'text-blue-400' : 'text-gray-600'}`}>
-            <span className={`w-2 h-2 rounded-full ${cloudConnected ? 'bg-blue-400' : 'bg-gray-600'}`} />
-            Cloud {cloudConnected ? `${events.length} events` : 'not connected'}
-          </span>
-          {latestSession && (
-            <>
-              <span className="text-gray-700">|</span>
-              <span className="text-gray-500">
-                📱 {latestSession.device_model} · v{latestSession.app_version}
+      {/* ── MAIN ── */}
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+
+        {/* Top bar */}
+        <header className="h-12 border-b border-[#1e1e1e] flex items-center justify-between px-6 flex-shrink-0">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-mono font-bold text-white tracking-widest">PERF_METRIC_V1</span>
+            <span className="text-gray-700 text-xs">|</span>
+            {tab === 'network' ? (
+              <div className="flex items-center gap-5 text-[10px] font-mono tracking-widest">
+                {(['live','analysis','security'] as const).map((s, i) => {
+                  const labels = ['LIVE STREAM','NETWORK ANALYSIS','SECURITY']
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => setNetworkSub(s)}
+                      className={`transition-colors pb-0.5 ${
+                        networkSub === s
+                          ? 'text-blue-400 border-b border-blue-500'
+                          : 'text-gray-600 hover:text-gray-400'
+                      }`}
+                    >
+                      {labels[i]}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <span className="text-[10px] font-mono text-gray-500 tracking-widest">
+                {tab === 'overview'    && 'SYSTEM OVERVIEW'}
+                {tab === 'flow'        && 'FLOW TRACE JOURNEY'}
+                {tab === 'heatmap'     && 'SCREEN HEATMAP'}
+                {tab === 'diagnostics' && 'DIAGNOSTICS'}
+                {tab === 'sessions'    && 'SESSION HISTORY'}
               </span>
-            </>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {tab === 'network' && (
+              <div className="flex items-center gap-2 bg-[#161616] border border-[#2a2a2a] rounded px-3 py-1.5">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="#555" strokeWidth="1.5">
+                  <circle cx="5" cy="5" r="3.5" /><line x1="8" y1="8" x2="11" y2="11" />
+                </svg>
+                <input
+                  className="bg-transparent text-[10px] font-mono text-gray-400 placeholder-gray-700 outline-none w-28"
+                  placeholder="QUERY_EXEC..."
+                />
+              </div>
+            )}
+            {/* signal icon */}
+            <div className={`flex items-center gap-1 ${connected ? 'text-gray-400' : 'text-gray-700'}`}>
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+                <rect x="1" y="12" width="3" height="5" rx="0.5" opacity={connected ? 1 : 0.3} />
+                <rect x="5.5" y="8" width="3" height="9" rx="0.5" opacity={connected ? 1 : 0.3} />
+                <rect x="10" y="4" width="3" height="13" rx="0.5" opacity={connected ? 1 : 0.3} />
+                <rect x="14.5" y="1" width="3" height="16" rx="0.5" opacity={connected ? 1 : 0.3} />
+              </svg>
+            </div>
+            {/* grid icon */}
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor" className="text-gray-500">
+              <circle cx="4" cy="4" r="1.5" /><circle cx="9" cy="4" r="1.5" /><circle cx="14" cy="4" r="1.5" />
+              <circle cx="4" cy="9" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="14" cy="9" r="1.5" />
+              <circle cx="4" cy="14" r="1.5" /><circle cx="9" cy="14" r="1.5" /><circle cx="14" cy="14" r="1.5" />
+            </svg>
+            {/* avatar */}
+            <div className="w-7 h-7 rounded bg-[#1e3a5f] border border-blue-800 flex items-center justify-center text-[10px] font-mono font-bold text-blue-300">
+              JD
+            </div>
+            {tab === 'heatmap' && (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-green-400 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                SYSTEM HEALTHY
+              </span>
+            )}
+            {tab === 'diagnostics' && (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-green-400 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                LIVE_SYNC
+              </span>
+            )}
+          </div>
+        </header>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+
+          {tab === 'overview' && (
+            <OverviewTab
+              events={events}
+              fpsEvents={fpsEvents}
+              memoryEvents={memoryEvents}
+              screenEvents={screenEvents}
+              connected={connected}
+              cloudConnected={cloudConnected}
+              loading={loading}
+            />
           )}
-          {loading && <span className="text-gray-600">↻ syncing...</span>}
+
+          {tab === 'flow' && (
+            <FlowTrace events={screenEvents} apiEvents={apiEvents} />
+          )}
+
+          {tab === 'network' && (
+            <NetworkTab events={apiEvents} subTab={networkSub} allEvents={activeEvents} />
+          )}
+
+          {tab === 'heatmap' && (
+            <HeatmapTab
+              screenEvents={screenEvents}
+              apiEvents={apiEvents}
+              memoryEvents={memoryEvents}
+              connected={connected}
+            />
+          )}
+
+          {tab === 'diagnostics' && (
+            <DiagnosticsTab events={activeEvents} onReproduce={(crash) => { reproduce(crash, latestSession?.id); setTab('overview') }} />
+          )}
+
+          {tab === 'sessions' && (
+            <SessionHistoryTab />
+          )}
+
         </div>
-
-        {/* ── OVERVIEW TAB ── */}
-        {tab === 'overview' && (
-          <div className="space-y-6">
-            {/* Row 1: Health Score + Memory */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              <div className="lg:col-span-2">
-                <HealthScore events={events} />
-              </div>
-              <div className="lg:col-span-3">
-                <MemoryGraph events={memoryEvents} />
-              </div>
-            </div>
-
-            {/* Row 2: FPS + Screen Timings */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <FpsGraph events={fpsEvents} />
-              <ScreenTimings events={screenEvents} />
-            </div>
-
-            {/* Row 3: Export */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <ExportReport events={events} />
-              <div className="lg:col-span-2 bg-dark-card border border-dark-border rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">📡 Live Event Stream</h2>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {events.length === 0 ? (
-                    <p className="text-gray-500 text-sm">Waiting for events — open your app...</p>
-                  ) : (
-                    events.slice(-15).reverse().map((e, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs p-1.5 bg-dark-bg rounded">
-                        <span className={`w-16 text-center rounded px-1 py-0.5 flex-shrink-0 ${
-                          e.type === 'lifecycle' ? 'bg-blue-900 text-blue-300' :
-                          e.type === 'network'   ? 'bg-green-900 text-green-300' :
-                          e.type === 'memory'    ? 'bg-purple-900 text-purple-300' :
-                          'bg-orange-900 text-orange-300'
-                        }`}>{e.type}</span>
-                        <span className="text-gray-300 flex-1 truncate">
-                          {e.screenName || (e.url ? (() => { try { return new URL(e.url).pathname } catch { return e.url } })() : '')}
-                        </span>
-                        {e.duration && <span className="text-gray-500">{e.duration}ms</span>}
-                        <span className="text-gray-600 flex-shrink-0">
-                          {new Date(e.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── FLOW TRACE TAB ── */}
-        {tab === 'flow' && (
-          <FlowTrace events={screenEvents} apiEvents={apiEvents} />
-        )}
-
-        {/* ── NETWORK TAB ── */}
-        {tab === 'network' && (
-          <div className="space-y-6">
-            <SlowestApis events={apiEvents} />
-            <ApiCalls events={apiEvents} />
-          </div>
-        )}
-
-        {/* ── HEATMAP TAB ── */}
-        {tab === 'heatmap' && (
-          <div className="space-y-6">
-            <ScreenHeatmap screenEvents={screenEvents} apiEvents={apiEvents} />
-            <ScreenTimings events={screenEvents} />
-          </div>
-        )}
-
-        {/* ── DIAGNOSTICS TAB ── */}
-        {tab === 'diagnostics' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <CrashMonitor events={events.filter(e => e.type === 'crash')} />
-              <StartupProfiler events={events.filter(e => e.type === 'startup')} />
-            </div>
-            <DatabaseMonitor events={events.filter(e => e.type === 'database')} />
-          </div>
-        )}
-
       </div>
     </main>
   )
