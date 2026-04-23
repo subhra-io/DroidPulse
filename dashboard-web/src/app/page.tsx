@@ -15,13 +15,15 @@ import { CrashMonitor }     from '@/components/CrashMonitor'
 import { StartupProfiler }  from '@/components/StartupProfiler'
 import { DatabaseMonitor }  from '@/components/DatabaseMonitor'
 import { useWebSocket }     from '@/hooks/useWebSocket'
+import { useCloudEvents }   from '@/hooks/useCloudEvents'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
 type Tab = 'overview' | 'flow' | 'network' | 'heatmap' | 'diagnostics'
 
 export default function Dashboard() {
-  const { events, connected } = useWebSocket(WS_URL)
+  const { events: liveEvents, connected } = useWebSocket(WS_URL)
+  const { events, loading, latestSession, cloudConnected } = useCloudEvents(liveEvents)
   const [tab, setTab] = useState<Tab>('overview')
 
   const screenEvents = events.filter(e => e.type === 'lifecycle')
@@ -79,6 +81,28 @@ export default function Dashboard() {
             &nbsp;then open your app.
           </div>
         )}
+
+        {/* Cloud status */}
+        <div className="mb-4 flex items-center gap-3 text-xs text-gray-500">
+          <span className={`flex items-center gap-1 ${connected ? 'text-green-400' : 'text-gray-600'}`}>
+            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-gray-600'}`} />
+            Live WebSocket {connected ? 'connected' : 'disconnected'}
+          </span>
+          <span className="text-gray-700">|</span>
+          <span className={`flex items-center gap-1 ${cloudConnected ? 'text-blue-400' : 'text-gray-600'}`}>
+            <span className={`w-2 h-2 rounded-full ${cloudConnected ? 'bg-blue-400' : 'bg-gray-600'}`} />
+            Cloud {cloudConnected ? `${events.length} events` : 'not connected'}
+          </span>
+          {latestSession && (
+            <>
+              <span className="text-gray-700">|</span>
+              <span className="text-gray-500">
+                📱 {latestSession.device_model} · v{latestSession.app_version}
+              </span>
+            </>
+          )}
+          {loading && <span className="text-gray-600">↻ syncing...</span>}
+        </div>
 
         {/* ── OVERVIEW TAB ── */}
         {tab === 'overview' && (
