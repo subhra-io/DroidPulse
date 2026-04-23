@@ -34,9 +34,19 @@ internal class AutoLifecycleTracker : Application.ActivityLifecycleCallbacks {
             val name = activity.javaClass.simpleName
             resumeTimes[name] = System.currentTimeMillis()
 
-            val launchDuration = createTimes[name]?.let {
-                System.currentTimeMillis() - it
-            }
+            // launchDuration = time from onCreate → onResume
+            // Only valid if activity was just created (createTime is recent)
+            // If activity is resuming from background, createTime is stale → don't use it
+            val createTime = createTimes[name]
+            val launchDuration = if (createTime != null) {
+                val elapsed = System.currentTimeMillis() - createTime
+                // Only count as launch time if < 30 seconds (fresh open)
+                // Otherwise it's a resume from background — not a launch
+                if (elapsed < 30_000L) elapsed else null
+            } else null
+
+            // Clear create time after use — prevents stale measurements
+            createTimes.remove(name)
 
             navigationStack.remove(name)
             navigationStack.add(name)
@@ -48,7 +58,7 @@ internal class AutoLifecycleTracker : Application.ActivityLifecycleCallbacks {
                 duration        = launchDuration,
                 navigationStack = navigationStack.toList()
             ))
-            Logger.debug("▶ $name resumed (${launchDuration}ms to open)")
+            Logger.debug("▶ $name resumed (${launchDuration?.let { "${it}ms to open" } ?: "from background"})")
         } catch (e: Exception) { sdkError("onActivityResumed", e) }
     }
 

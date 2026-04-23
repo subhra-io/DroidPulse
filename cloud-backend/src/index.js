@@ -96,6 +96,15 @@ app.post('/api/events', authenticate, (req, res) => {
     return res.status(400).json({ error: 'sessionId and events[] required' })
   }
 
+  // Auto-create session if it doesn't exist (device may have restarted)
+  const existingSession = db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId)
+  if (!existingSession) {
+    db.prepare(`
+      INSERT OR IGNORE INTO sessions (id, project_id, app_version, build_type, started_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(sessionId, req.project.id, 'unknown', 'debug', Date.now())
+  }
+
   const insertEvent = db.prepare(`
     INSERT INTO events (session_id, project_id, type, data, timestamp)
     VALUES (?, ?, ?, ?, ?)
