@@ -65,8 +65,28 @@ data class DroidPulseConfig(
     /**
      * Cloud configuration for team dashboards, version comparison, and CI/CD.
      * Get your API key from: https://dashboard.droidpulse.dev
-     *
      * Set to null to use local dashboard only (default).
      */
-    val cloud: CloudConfig? = null
+    val cloud: CloudConfig? = null,
+
+    // ── TECHNICAL OPTIMIZATIONS ──────────────────────────────────────────
+
+    /**
+     * Enable shake-to-report for QA testers.
+     * Shake phone twice → generates performance report.
+     */
+    val shakeToReport: Boolean = false,
+
+    /**
+     * Enable adaptive sampling — reduces polling when app is idle.
+     * Saves battery. Recommended: true.
+     */
+    val adaptiveSampling: Boolean = true,
+
+    /**
+     * Ring buffer capacity — number of events to keep in memory.
+     * Used for "Why slow?" analysis and shake-to-report.
+     * Default: 10,000 events (~5-10 minutes of data)
+     */
+    val ringBufferCapacity: Int = 10_000
 )

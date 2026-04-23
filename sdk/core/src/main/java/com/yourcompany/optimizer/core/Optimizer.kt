@@ -116,10 +116,33 @@ object DroidPulse {
                 val appVersion = try {
                     app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "unknown"
                 } catch (_: Exception) { "unknown" }
-
                 val buildType = if (cfg.debug) "debug" else "release"
-
                 CloudUploader(app, cfg.cloud, appVersion, buildType).start()
+            }
+        }
+
+        // ── TECHNICAL OPTIMIZATIONS ──────────────────────────────────────
+
+        // 8. Adaptive sampling
+        if (cfg.adaptiveSampling) {
+            safeStart("AdaptiveSampler") {
+                AdaptiveSampler(app).start()
+            }
+        }
+
+        // 9. Shake to Report
+        if (cfg.shakeToReport) {
+            safeStart("ShakeReporter") {
+                ShakeReporter(app) { reportUrl, reportJson ->
+                    Logger.info("📊 Report ready: $reportUrl")
+                    // Broadcast to dashboard via WebSocket
+                    dispatcher.dispatch(object : Event() {
+                        override val timestamp = System.currentTimeMillis()
+                        override val type = "report"
+                        val url = reportUrl
+                        val summary = reportJson.take(200)
+                    })
+                }.start()
             }
         }
 
@@ -175,6 +198,22 @@ object DroidPulse {
      */
     fun <T> trackDb(queryName: String, dbName: String = "default", block: () -> T): T {
         return DatabaseMonitor.track(queryName, dbName, block)
+    }
+
+    /**
+     * "Why is my app slow?" — analyze recent performance data.
+     * Returns plain-English diagnosis with actionable fix suggestions.
+     *
+     * ```kotlin
+     * val analysis = DroidPulse.analyze()
+     * Log.d("DroidPulse", analysis.summary)
+     * analysis.allIssues.forEach { issue ->
+     *     Log.d("DroidPulse", "• ${issue.title}: ${issue.suggestion}")
+     * }
+     * ```
+     */
+    fun analyze(minutesBack: Int = 5): PerformanceAnalyzer.Analysis {
+        return PerformanceAnalyzer.analyze(minutesBack)
     }
 
     /**
