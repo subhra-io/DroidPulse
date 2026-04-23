@@ -16,7 +16,7 @@ import org.json.JSONObject
  * Each command re-dispatches the event through DroidPulse.dispatcher so it
  * appears in the live stream exactly as if the device had generated it.
  */
-internal object CommandHandler {
+object CommandHandler {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 

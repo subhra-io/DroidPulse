@@ -1,6 +1,7 @@
 package com.yourcompany.optimizer.transport
 
 import com.yourcompany.optimizer.core.DroidPulse
+import com.yourcompany.optimizer.core.CommandHandler
 import com.yourcompany.optimizer.core.Logger
 import kotlinx.coroutines.launch
 import org.java_websocket.WebSocket
