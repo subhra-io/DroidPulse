@@ -4,8 +4,8 @@ package com.yourcompany.optimizer.core
  * SDK constants
  */
 object Constants {
-    const val SDK_VERSION = "1.0.0"
-    const val SDK_NAME = "OptimizerSDK"
+    const val SDK_VERSION = "1.5.2"
+    const val SDK_NAME = "DroidPulse"
     
     // Event types
     const val EVENT_LIFECYCLE = "lifecycle"
