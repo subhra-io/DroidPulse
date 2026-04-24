@@ -101,7 +101,7 @@ export default function Dashboard() {
         state={replay}
         onPause={pause}
         onResume={resume}
-        onExit={() => { sendCommand({ cmd: 'stop_replay' }); exitReplay() }}
+        onExit={() => { try { sendCommand({ cmd: 'stop_replay' }) } catch(_){} exitReplay() }}
       />
 
       {/* ── SIDEBAR ── */}

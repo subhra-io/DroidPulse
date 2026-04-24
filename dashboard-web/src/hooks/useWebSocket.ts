@@ -72,12 +72,25 @@ export function useWebSocket(url: string) {
   }, [connect])
 
   const sendCommand = useCallback((cmd: object) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(cmd))
-    } else {
-      console.warn('[DroidPulse] Cannot send command — not connected')
+    const ws = wsRef.current
+    // readyState: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify(cmd))
+      console.log('[DroidPulse] ✅ Command sent:', (cmd as any).cmd)
+      return
     }
-  }, [])
+    // WS exists but still connecting — wait for open then send
+    if (ws && ws.readyState === 0) {
+      console.log('[DroidPulse] WS connecting, queuing command:', (cmd as any).cmd)
+      const onOpen = () => {
+        ws.send(JSON.stringify(cmd))
+        ws.removeEventListener('open', onOpen)
+      }
+      ws.addEventListener('open', onOpen)
+      return
+    }
+    console.warn('[DroidPulse] Cannot send command — WS state:', ws?.readyState ?? 'null')
+  }, []) // wsRef is a stable ref, safe to omit
 
   return { events, connected, sendCommand }
 }

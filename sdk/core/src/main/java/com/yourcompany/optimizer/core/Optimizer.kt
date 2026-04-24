@@ -118,6 +118,9 @@ object DroidPulse {
                 } catch (_: Exception) { "unknown" }
                 val buildType = if (cfg.debug) "debug" else "release"
                 CloudUploader(app, cfg.cloud, appVersion, buildType).start()
+                // Wire cloud config into CommandHandler so reproduce_trace can fetch events
+                CommandHandler.cloudApiUrl = cfg.cloud.endpoint
+                CommandHandler.cloudApiKey = cfg.cloud.apiKey
             }
         }
 

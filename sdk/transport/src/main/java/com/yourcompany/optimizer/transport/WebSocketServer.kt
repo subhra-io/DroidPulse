@@ -56,6 +56,11 @@ class WebSocketServer(private val port: Int = 8080) {
     }
     
     private inner class Server(address: InetSocketAddress) : JavaWebSocketServer(address) {
+
+        init {
+            // Increase max frame size to 1MB to handle larger dashboard commands
+            isReuseAddr = true
+        }
         
         override fun onOpen(conn: WebSocket, handshake: ClientHandshake) {
             clients.add(conn)

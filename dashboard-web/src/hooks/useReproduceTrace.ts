@@ -153,11 +153,16 @@ export function useReproduceTrace(sendCommand?: (cmd: object) => void) {
     const analysis = analyseCrash(crash, allEvents)
 
     // ── Send reproduce_trace command to connected device ──────────────────
+    // Send only the session ID — device fetches events from cloud itself
+    // This avoids WebSocket frame size limits (Java-WebSocket default: 65KB)
     if (sendCommand) {
       sendCommand({
         cmd:         'reproduce_trace',
-        events:      allEvents,
+        sessionId:   sessionId ?? 'demo',
         stepDelayMs: STEP_INTERVAL_MS,
+        // Send a compact summary of event types only, not full payloads
+        eventTypes:  [...new Set(allEvents.map((e: any) => e.type))],
+        totalEvents: allEvents.length,
       })
     }
 
