@@ -55,3 +55,10 @@ Thumbs.db
 cloud-backend/node_modules/
 ci-tool/node_modules/
 
+# Documentation files (keep locally but don't push for public release)
+*.md
+docs/
+QUICK_REFERENCE.txt
+STRUCTURE.txt
+SUMMARY.txt
+

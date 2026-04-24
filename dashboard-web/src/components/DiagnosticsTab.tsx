@@ -1,10 +1,20 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { WhySlowPanel } from '@/components/WhySlowPanel'
+import { DeviceTwin, simulateEvents, DEVICE_PROFILES } from '@/components/DeviceTwin'
+import { ClientOnly } from '@/components/ClientOnly'
+import { LiveApiCallsPanel } from '@/components/LiveApiCallsPanel'
+import { EventDebugPanel } from '@/components/EventDebugPanel'
 
 interface Props {
   events: any[]
   onReproduce: (crash: any, sessionId?: string) => void
+  twinEvents: any[] | null
+  twinProfile: string | null
+  onSimulate: (sim: any[], profileName: string) => void
+  onResetTwin: () => void
+  allEvents: any[]
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -306,13 +316,45 @@ function QueryExplorer({ events }: { events: any[] }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-export function DiagnosticsTab({ events, onReproduce }: Props) {
+export function DiagnosticsTab({ events, onReproduce, twinEvents, twinProfile, onSimulate, onResetTwin, allEvents }: Props) {
   const crashEvents   = events.filter(e => e.type === 'crash')
   const startupEvents = events.filter(e => e.type === 'startup')
   const dbEvents      = events.filter(e => e.type === 'database')
 
+  // Find the active profile ID from the profile name
+  const activeProfileId = twinProfile ? DEVICE_PROFILES.find(p => p.name === twinProfile)?.id : null
+  const activeProfile = activeProfileId ? DEVICE_PROFILES.find(p => p.id === activeProfileId) : null
+
   return (
     <div className="space-y-4">
+      <ClientOnly fallback={
+        <div className="bg-[#111] border border-[#1e1e1e] rounded-lg p-5">
+          <div className="text-[10px] font-mono text-gray-600 tracking-widest">
+            DEVICE TWIN SIMULATOR
+          </div>
+          <div className="text-[9px] font-mono text-gray-600 mt-1">
+            Loading device simulation...
+          </div>
+        </div>
+      }>
+        <DeviceTwin
+          events={allEvents}
+          isSimulating={!!twinEvents}
+          onSimulate={(sim, profileName) => onSimulate(sim, profileName)}
+          onReset={onResetTwin}
+          activeProfile={activeProfileId}
+        />
+      </ClientOnly>
+      
+      <LiveApiCallsPanel 
+        events={allEvents}
+        profile={activeProfile}
+        isSimulating={!!twinEvents}
+      />
+      
+      <EventDebugPanel events={allEvents} />
+      
+      <WhySlowPanel events={events} />
       <CrashPanel   events={crashEvents} onReproduce={onReproduce} />
       <StartupPanel events={startupEvents} />
       <QueryExplorer events={dbEvents} />

@@ -12,6 +12,7 @@ import { OverviewTab }        from '@/components/OverviewTab'
 import { SessionHistoryTab }  from '@/components/SessionHistoryTab'
 import { ReplayBanner }       from '@/components/ReplayBanner'
 import { useReproduceTrace }  from '@/hooks/useReproduceTrace'
+import { simulateEvents }     from '@/components/DeviceTwin'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
@@ -86,8 +87,12 @@ export default function Dashboard() {
   const [splashDone, setSplashDone] = useState(false)
   const { state: replay, reproduce, pause, resume, reset: exitReplay } = useReproduceTrace(sendCommand)
 
-  // When replaying, all tabs show the replayed events instead of live events
-  const activeEvents = replay.phase !== 'idle' ? replay.visibleEvents : events
+  // Device Twin simulation state
+  const [twinEvents, setTwinEvents]   = useState<any[] | null>(null)
+  const [twinProfile, setTwinProfile] = useState<string | null>(null)
+
+  // Active events — twin simulation overrides real events when active
+  const activeEvents = twinEvents ?? (replay.phase !== 'idle' ? replay.visibleEvents : events)
 
   const screenEvents = activeEvents.filter(e => e.type === 'lifecycle')
   const apiEvents    = activeEvents.filter(e => e.type === 'network')
@@ -227,6 +232,12 @@ export default function Dashboard() {
                 LIVE_SYNC
               </span>
             )}
+            {twinProfile && (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono text-orange-400 ml-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+                TWIN: {twinProfile}
+              </span>
+            )}
           </div>
         </header>
 
@@ -263,7 +274,15 @@ export default function Dashboard() {
           )}
 
           {tab === 'diagnostics' && (
-            <DiagnosticsTab events={activeEvents} onReproduce={(crash) => { reproduce(crash, latestSession?.id); setTab('overview') }} />
+            <DiagnosticsTab
+              events={activeEvents}
+              onReproduce={(crash) => { reproduce(crash, latestSession?.id); setTab('overview') }}
+              twinEvents={twinEvents}
+              twinProfile={twinProfile}
+              onSimulate={(sim, profileName) => { setTwinEvents(sim); setTwinProfile(profileName) }}
+              onResetTwin={() => { setTwinEvents(null); setTwinProfile(null) }}
+              allEvents={events}
+            />
           )}
 
           {tab === 'sessions' && (

@@ -163,7 +163,7 @@ function FpsPanel({ events }: { events: any[] }) {
     const src = events.slice(-16)
     if (src.length === 0) {
       return Array.from({ length: 16 }, (_, i) => ({
-        i, fps: 50 + Math.random() * 10 - (i === 6 ? 30 : 0),
+        i, fps: 50 + (i * 2.5) % 10 - (i === 6 ? 30 : 0), // Deterministic pattern instead of random
       }))
     }
     return src.map((e, i) => ({ i, fps: e.fps || 0 }))
