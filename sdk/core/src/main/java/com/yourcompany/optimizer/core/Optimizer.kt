@@ -65,6 +65,11 @@ object DroidPulse {
             app.registerActivityLifecycleCallbacks(AutoLifecycleTracker())
         }
 
+        // 1b. Activity registry for reproduce_trace navigation
+        safeStart("ActivityRegistry") {
+            ActivityRegistry.register(app)
+        }
+
         // 2. Memory tracker
         if (cfg.trackMemory) {
             safeStart("MemoryTracker") {

@@ -126,6 +126,17 @@ object CommandHandler {
         val type = json.optString("type", "unknown")
         val ts   = System.currentTimeMillis()
 
+        // ── For lifecycle RESUMED events — actually navigate to the screen ──
+        if (type == "lifecycle") {
+            val eventType  = json.optString("eventType", "")
+            val screenName = json.optString("screenName", "")
+            if (eventType == "RESUMED" && screenName.isNotEmpty()) {
+                mainHandler.post {
+                    ActivityRegistry.navigateTo(screenName)
+                }
+            }
+        }
+
         val event: Event = when (type) {
             "crash" -> CrashEvent(
                 timestamp  = ts,
