@@ -26,6 +26,9 @@ object CommandHandler {
     var cloudApiUrl: String = ""
     var cloudApiKey: String = ""
 
+    /** App context for overlay — set by DroidPulse.start() */
+    var appContext: android.content.Context? = null
+
     fun handle(raw: String) {
         try {
             val json = JSONObject(raw)
@@ -48,19 +51,37 @@ object CommandHandler {
                     Logger.info("[CMD] reproduce_trace session=$sessionId events~$total")
                     dispatchAck("reproduce_started", mapOf("sessionId" to sessionId))
 
+                    // Show overlay immediately
+                    appContext?.let { ctx ->
+                        ReplayOverlay.show(ctx, total) {
+                            // User tapped STOP on device
+                            mainHandler.removeCallbacksAndMessages(null)
+                            dispatchAck("replay_stopped")
+                        }
+                    }
+
                     Thread {
                         val events = fetchSessionEvents(sessionId)
                         if (events.isEmpty()) {
                             Logger.warn("[CMD] No events for session $sessionId")
                             dispatchAck("reproduce_error", mapOf("reason" to "no_events"))
+                            ReplayOverlay.dismiss()
                             return@Thread
                         }
                         Logger.info("[CMD] Replaying ${events.size} events")
+                        // Update overlay total with actual count
+                        mainHandler.post {
+                            ReplayOverlay.updateProgress(0, events.size, "lifecycle")
+                        }
                         events.forEachIndexed { i, ev ->
-                            mainHandler.postDelayed({ replayEvent(ev) }, i * delayMs)
+                            mainHandler.postDelayed({
+                                replayEvent(ev)
+                                ReplayOverlay.updateProgress(i + 1, events.size, ev.optString("type", ""))
+                            }, i * delayMs)
                         }
                         mainHandler.postDelayed({
                             dispatchAck("reproduce_done", mapOf("total" to events.size))
+                            ReplayOverlay.showComplete(events.size)
                         }, events.size * delayMs + 500)
                     }.start()
                 }
@@ -68,6 +89,7 @@ object CommandHandler {
                 "stop_replay" -> {
                     mainHandler.removeCallbacksAndMessages(null)
                     Logger.info("[CMD] stop_replay")
+                    ReplayOverlay.dismiss()
                     dispatchAck("replay_stopped")
                 }
 

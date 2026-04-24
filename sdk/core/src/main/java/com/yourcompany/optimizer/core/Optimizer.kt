@@ -121,10 +121,12 @@ object DroidPulse {
                 // Wire cloud config into CommandHandler so reproduce_trace can fetch events
                 CommandHandler.cloudApiUrl = cfg.cloud.endpoint
                 CommandHandler.cloudApiKey = cfg.cloud.apiKey
+                CommandHandler.appContext  = app
             }
         }
 
-        // ── TECHNICAL OPTIMIZATIONS ──────────────────────────────────────
+        // Always give CommandHandler the app context (needed for overlay even without cloud)
+        CommandHandler.appContext = app
 
         // 8. Adaptive sampling
         if (cfg.adaptiveSampling) {

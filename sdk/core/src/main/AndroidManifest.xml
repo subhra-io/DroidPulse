@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required for ReplayOverlay — shown during reproduce_trace only -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application>
         <!-- Disable auto-init via Jetpack Startup — DroidPulse uses DroidPulse.start() instead -->
