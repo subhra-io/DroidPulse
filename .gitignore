@@ -57,6 +57,7 @@ ci-tool/node_modules/
 
 # Documentation files (keep locally but don't push for public release)
 *.md
+!README.md
 docs/
 QUICK_REFERENCE.txt
 STRUCTURE.txt
