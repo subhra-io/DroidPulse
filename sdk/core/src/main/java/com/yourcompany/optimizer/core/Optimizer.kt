@@ -27,6 +27,7 @@ object DroidPulse {
     private var isInitialized = false
     private var config = DroidPulseConfig()
     internal var startupProfiler: StartupProfiler? = null
+    private var analyticsUploader: AnalyticsUploader? = null
 
     // SupervisorJob: if one tracker crashes, others keep running
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -127,6 +128,16 @@ object DroidPulse {
                 CommandHandler.cloudApiUrl = cfg.cloud.endpoint
                 CommandHandler.cloudApiKey = cfg.cloud.apiKey
                 CommandHandler.appContext  = app
+            }
+        }
+
+        // ── ANALYTICS & CLOUD ────────────────────────────────────────────────
+
+        // 8. Analytics uploader (if cloud config provided)
+        if (cfg.cloud != null) {
+            safeStart("AnalyticsUploader") {
+                analyticsUploader = AnalyticsUploader(app, cfg.cloud)
+                Logger.info("📊 Cloud analytics enabled: ${cfg.cloud.endpoint}")
             }
         }
 
@@ -264,6 +275,13 @@ object DroidPulse {
             
             // Emit through existing dispatcher
             dispatcher.dispatch(AnalyticsEvent(
+                event = event,
+                properties = enrichedProperties,
+                timestamp = System.currentTimeMillis()
+            ))
+            
+            // Upload to cloud if configured
+            analyticsUploader?.queueEvent(AnalyticsEvent(
                 event = event,
                 properties = enrichedProperties,
                 timestamp = System.currentTimeMillis()

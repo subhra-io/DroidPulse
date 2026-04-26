@@ -1,37 +1,140 @@
 package com.yourcompany.optimizer.core
 
 /**
- * Cloud configuration for DroidPulse SaaS.
- *
- * Get your API key from: https://dashboard.droidpulse.dev
- *
- * Usage:
- * ```kotlin
- * DroidPulse.start(this, DroidPulseConfig(
- *     enabled = BuildConfig.DEBUG,
- *     cloud = CloudConfig(
- *         apiKey    = "dp_live_xxxxxxxxxxxx",
- *         projectId = "your-project-id"
- *     )
- * ))
- * ```
+ * Cloud configuration for DroidPulse Analytics
+ * Enables real-time analytics with performance correlation across all your apps
  */
 data class CloudConfig(
-    /** Your DroidPulse API key from dashboard.droidpulse.dev */
+    /**
+     * Your analytics API endpoint
+     * Example: "https://your-analytics-api.railway.app"
+     */
+    val endpoint: String,
+    
+    /**
+     * API key for authentication
+     * Get this from your DroidPulse dashboard
+     */
     val apiKey: String,
-
-    /** Your project ID from dashboard.droidpulse.dev */
-    val projectId: String,
-
-    /** Cloud API endpoint. Default: DroidPulse cloud. */
-    val endpoint: String = "https://api.droidpulse.dev",
-
-    /** Upload events every N milliseconds. Default: 5 seconds. */
-    val uploadIntervalMs: Long = 5000L,
-
-    /** Max events to batch per upload. Default: 50. */
+    
+    /**
+     * Unique identifier for this app
+     * Used to separate analytics across different apps
+     */
+    val appId: String = "",
+    
+    /**
+     * Human-readable app name for dashboard
+     */
+    val appName: String = "",
+    
+    /**
+     * How often to upload analytics events (milliseconds)
+     * Default: 30 seconds
+     */
+    val uploadInterval: Long = 30000,
+    
+    /**
+     * Number of events to batch before uploading
+     * Default: 50 events
+     */
     val batchSize: Int = 50,
-
-    /** Upload even in release builds. Default: false (debug only). */
-    val uploadInRelease: Boolean = false
-)
+    
+    /**
+     * Maximum events to store locally if offline
+     * Default: 1000 events
+     */
+    val maxOfflineEvents: Int = 1000,
+    
+    /**
+     * Enable real-time WebSocket connection for live debugging
+     * Default: true
+     */
+    val enableRealTime: Boolean = true,
+    
+    /**
+     * Compress analytics data before upload
+     * Default: true (reduces bandwidth by ~70%)
+     */
+    val enableCompression: Boolean = true,
+    
+    /**
+     * Retry failed uploads
+     * Default: true
+     */
+    val enableRetry: Boolean = true,
+    
+    /**
+     * Maximum retry attempts for failed uploads
+     * Default: 3
+     */
+    val maxRetries: Int = 3,
+    
+    /**
+     * Enable debug logging for analytics
+     * Default: false (set to true for development)
+     */
+    val debug: Boolean = false
+) {
+    
+    /**
+     * Validate configuration
+     */
+    fun validate(): List<String> {
+        val errors = mutableListOf<String>()
+        
+        if (endpoint.isBlank()) {
+            errors.add("Cloud endpoint cannot be empty")
+        }
+        
+        if (!endpoint.startsWith("https://") && !endpoint.startsWith("http://")) {
+            errors.add("Cloud endpoint must start with https:// or http://")
+        }
+        
+        if (apiKey.isBlank()) {
+            errors.add("API key cannot be empty")
+        }
+        
+        if (uploadInterval < 5000) {
+            errors.add("Upload interval must be at least 5 seconds")
+        }
+        
+        if (batchSize < 1 || batchSize > 1000) {
+            errors.add("Batch size must be between 1 and 1000")
+        }
+        
+        return errors
+    }
+    
+    /**
+     * Get WebSocket URL from HTTP endpoint
+     */
+    val webSocketUrl: String
+        get() = endpoint.replace("https://", "wss://").replace("http://", "ws://")
+    
+    companion object {
+        /**
+         * Create configuration for development/testing
+         */
+        fun development(apiKey: String = "dev_key") = CloudConfig(
+            endpoint = "http://localhost:3001",
+            apiKey = apiKey,
+            debug = true,
+            uploadInterval = 10000, // Upload every 10 seconds in dev
+            batchSize = 10 // Smaller batches for testing
+        )
+        
+        /**
+         * Create configuration for production
+         */
+        fun production(endpoint: String, apiKey: String, appId: String, appName: String) = CloudConfig(
+            endpoint = endpoint,
+            apiKey = apiKey,
+            appId = appId,
+            appName = appName,
+            debug = false,
+            uploadInterval = 30000,
+            batchSize = 50
+        )
+    }
+}

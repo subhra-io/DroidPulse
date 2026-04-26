@@ -63,8 +63,18 @@ data class DroidPulseConfig(
     // ── PHASE 4 ──────────────────────────────────────────────────────────
 
     /**
-     * Cloud configuration for team dashboards, version comparison, and CI/CD.
-     * Get your API key from: https://dashboard.droidpulse.dev
+     * Cloud configuration for analytics and team dashboards.
+     * 
+     * Example:
+     * ```kotlin
+     * cloud = CloudConfig.production(
+     *     endpoint = "https://your-analytics-api.railway.app",
+     *     apiKey = "your_api_key",
+     *     appId = "com.yourcompany.app",
+     *     appName = "Your App Name"
+     * )
+     * ```
+     * 
      * Set to null to use local dashboard only (default).
      */
     val cloud: CloudConfig? = null,
