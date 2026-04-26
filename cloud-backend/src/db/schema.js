@@ -69,8 +69,52 @@ const initSchema = (db) => {
       created_at        INTEGER DEFAULT (strftime('%s', 'now') * 1000)
     );
 
-    -- Indexes for fast queries
-    CREATE INDEX IF NOT EXISTS idx_events_session    ON events(session_id);
+    -- Analytics events: custom track() calls with performance context
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id       TEXT NOT NULL,
+      project_id       TEXT NOT NULL,
+      event_name       TEXT NOT NULL,
+      user_id          TEXT,
+      properties       TEXT,   -- JSON
+      startup_time_ms  INTEGER DEFAULT 0,
+      memory_mb        REAL    DEFAULT 0,
+      fps_avg          REAL    DEFAULT 0,
+      perf_score       INTEGER DEFAULT 0,
+      crash_free       INTEGER DEFAULT 1,
+      timestamp        INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    );
+
+    -- User profiles: identify() calls
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id   TEXT NOT NULL,
+      user_id      TEXT NOT NULL,
+      properties   TEXT,   -- JSON
+      first_seen   INTEGER,
+      last_seen    INTEGER,
+      UNIQUE(project_id, user_id)
+    );
+
+    -- Funnel steps
+    CREATE TABLE IF NOT EXISTS funnel_events (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id   TEXT NOT NULL,
+      project_id   TEXT NOT NULL,
+      user_id      TEXT,
+      funnel_name  TEXT NOT NULL,
+      step_name    TEXT NOT NULL,
+      perf_score   INTEGER DEFAULT 0,
+      timestamp    INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_analytics_project   ON analytics_events(project_id);
+    CREATE INDEX IF NOT EXISTS idx_analytics_event     ON analytics_events(event_name);
+    CREATE INDEX IF NOT EXISTS idx_analytics_user      ON analytics_events(user_id);
+    CREATE INDEX IF NOT EXISTS idx_analytics_ts        ON analytics_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_funnel_project      ON funnel_events(project_id, funnel_name);
+    CREATE INDEX IF NOT EXISTS idx_user_profiles       ON user_profiles(project_id, user_id);
     CREATE INDEX IF NOT EXISTS idx_events_project    ON events(project_id);
     CREATE INDEX IF NOT EXISTS idx_events_type       ON events(type);
     CREATE INDEX IF NOT EXISTS idx_sessions_project  ON sessions(project_id);

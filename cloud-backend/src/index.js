@@ -386,14 +386,249 @@ app.get('/api/alerts', authenticate, (req, res) => {
   res.json({ alerts })
 })
 
+// ── POST /api/analytics/track — Custom event tracking ────────────────────────
+app.post('/api/analytics/track', authenticate, (req, res) => {
+  const { sessionId, events: analyticsEvents } = req.body
+  if (!sessionId || !Array.isArray(analyticsEvents)) {
+    return res.status(400).json({ error: 'sessionId and events[] required' })
+  }
+
+  const insert = db.prepare(`
+    INSERT INTO analytics_events
+      (session_id, project_id, event_name, user_id, properties,
+       startup_time_ms, memory_mb, fps_avg, perf_score, crash_free, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const insertFunnel = db.prepare(`
+    INSERT INTO funnel_events (session_id, project_id, user_id, funnel_name, step_name, perf_score, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  db.transaction(() => {
+    for (const evt of analyticsEvents) {
+      const props = evt.properties || {}
+      insert.run(
+        sessionId, req.project.id,
+        evt.event_name,
+        props.user_id || null,
+        JSON.stringify(props),
+        evt.startup_time_ms || 0,
+        evt.memory_mb || 0,
+        evt.fps_avg || 0,
+        evt.perf_score || 0,
+        evt.crash_free ? 1 : 0,
+        evt.timestamp || Date.now()
+      )
+      // Auto-track funnel steps
+      if (evt.event_name === 'funnel_step' && props.funnel_name && props.step_name) {
+        insertFunnel.run(
+          sessionId, req.project.id,
+          props.user_id || null,
+          props.funnel_name, props.step_name,
+          evt.perf_score || 0,
+          evt.timestamp || Date.now()
+        )
+      }
+    }
+  })()
+
+  broadcast(req.project.id, { event: 'analytics', sessionId, events: analyticsEvents })
+  res.json({ received: analyticsEvents.length })
+})
+
+// ── POST /api/analytics/identify — User identification ───────────────────────
+app.post('/api/analytics/identify', authenticate, (req, res) => {
+  const { userId, properties = {} } = req.body
+  if (!userId) return res.status(400).json({ error: 'userId required' })
+
+  const now = Date.now()
+  db.prepare(`
+    INSERT INTO user_profiles (project_id, user_id, properties, first_seen, last_seen)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(project_id, user_id) DO UPDATE SET
+      properties = excluded.properties,
+      last_seen  = excluded.last_seen
+  `).run(req.project.id, userId, JSON.stringify(properties), now, now)
+
+  res.json({ userId, updated: true })
+})
+
+// ── GET /api/analytics/events — Event counts over time ───────────────────────
+app.get('/api/analytics/events', authenticate, (req, res) => {
+  const { from, to, limit = 20 } = req.query
+  const fromTs = from ? parseInt(from) : Date.now() - 7 * 24 * 60 * 60 * 1000
+  const toTs   = to   ? parseInt(to)   : Date.now()
+
+  // Top events by count
+  const topEvents = db.prepare(`
+    SELECT event_name,
+           COUNT(*)                    AS total,
+           AVG(perf_score)             AS avg_perf,
+           AVG(startup_time_ms)        AS avg_startup,
+           SUM(CASE WHEN crash_free=0 THEN 1 ELSE 0 END) AS crash_sessions
+    FROM analytics_events
+    WHERE project_id = ? AND timestamp BETWEEN ? AND ?
+    GROUP BY event_name
+    ORDER BY total DESC
+    LIMIT ?
+  `).all(req.project.id, fromTs, toTs, parseInt(limit))
+
+  // Events per hour (last 24h)
+  const hourly = db.prepare(`
+    SELECT (timestamp / 3600000) * 3600000 AS hour,
+           COUNT(*) AS count
+    FROM analytics_events
+    WHERE project_id = ? AND timestamp >= ?
+    GROUP BY hour
+    ORDER BY hour ASC
+  `).all(req.project.id, Date.now() - 24 * 60 * 60 * 1000)
+
+  res.json({ topEvents, hourly })
+})
+
+// ── GET /api/analytics/funnel/:name — Funnel analysis ────────────────────────
+app.get('/api/analytics/funnel/:name', authenticate, (req, res) => {
+  const { from, to } = req.query
+  const fromTs = from ? parseInt(from) : Date.now() - 7 * 24 * 60 * 60 * 1000
+  const toTs   = to   ? parseInt(to)   : Date.now()
+
+  const steps = db.prepare(`
+    SELECT step_name,
+           COUNT(DISTINCT user_id)  AS users,
+           AVG(perf_score)          AS avg_perf,
+           MIN(timestamp)           AS first_seen
+    FROM funnel_events
+    WHERE project_id = ? AND funnel_name = ? AND timestamp BETWEEN ? AND ?
+    GROUP BY step_name
+    ORDER BY first_seen ASC
+  `).all(req.project.id, req.params.name, fromTs, toTs)
+
+  // Calculate drop-off between steps
+  const withDropoff = steps.map((step, i) => {
+    const prev = steps[i - 1]
+    const dropoff = prev ? Math.round((1 - step.users / prev.users) * 100) : 0
+    return { ...step, dropoff_pct: dropoff }
+  })
+
+  res.json({ funnel: req.params.name, steps: withDropoff })
+})
+
+// ── GET /api/analytics/perf-correlation — Performance vs event rate ───────────
+app.get('/api/analytics/perf-correlation', authenticate, (req, res) => {
+  const { event, from, to } = req.query
+  const fromTs = from ? parseInt(from) : Date.now() - 7 * 24 * 60 * 60 * 1000
+  const toTs   = to   ? parseInt(to)   : Date.now()
+
+  const rows = db.prepare(`
+    SELECT
+      CASE
+        WHEN perf_score >= 85 THEN 'excellent'
+        WHEN perf_score >= 70 THEN 'good'
+        WHEN perf_score >= 50 THEN 'poor'
+        ELSE 'critical'
+      END AS tier,
+      COUNT(*) AS event_count,
+      AVG(startup_time_ms) AS avg_startup
+    FROM analytics_events
+    WHERE project_id = ?
+      AND (? IS NULL OR event_name = ?)
+      AND timestamp BETWEEN ? AND ?
+    GROUP BY tier
+    ORDER BY event_count DESC
+  `).all(req.project.id, event || null, event || null, fromTs, toTs)
+
+  res.json({ correlation: rows })
+})
+
+// ── GET /api/analytics/users — User list ─────────────────────────────────────
+app.get('/api/analytics/users', authenticate, (req, res) => {
+  const { limit = 50 } = req.query
+  const users = db.prepare(`
+    SELECT u.*,
+      (SELECT COUNT(*) FROM analytics_events WHERE project_id = u.project_id AND user_id = u.user_id) AS event_count,
+      (SELECT AVG(perf_score) FROM analytics_events WHERE project_id = u.project_id AND user_id = u.user_id) AS avg_perf
+    FROM user_profiles u
+    WHERE u.project_id = ?
+    ORDER BY u.last_seen DESC
+    LIMIT ?
+  `).all(req.project.id, parseInt(limit))
+
+  res.json({ users: users.map(u => ({ ...u, properties: JSON.parse(u.properties || '{}') })) })
+})
+
 // ── Regression detection ──────────────────────────────────────────────────────
 const checkRegressions = (projectId, events) => {
-  // Get current session's version
-  const fpsEvent = events.find(e => e.type === 'fps')
-  if (!fpsEvent) return
+  const fpsEvents     = events.filter(e => e.type === 'fps')
+  const startupEvents = events.filter(e => e.type === 'startup')
+  const crashEvents   = events.filter(e => e.type === 'crash')
 
-  // Simple regression check — compare to previous version average
-  // Full implementation would compare rolling averages
+  if (fpsEvents.length === 0 && startupEvents.length === 0) return
+
+  // Get current app version from session
+  const sessionId = events[0]?.sessionId
+  if (!sessionId) return
+  const session = db.prepare('SELECT app_version FROM sessions WHERE id = ?').get(sessionId)
+  if (!session?.app_version) return
+
+  const version = session.app_version
+
+  // Get baseline (previous version average)
+  const baseline = db.prepare(`
+    SELECT avg_fps, avg_startup_ms, crash_rate
+    FROM version_metrics
+    WHERE project_id = ? AND app_version != ?
+    ORDER BY computed_at DESC LIMIT 1
+  `).get(projectId, version)
+
+  if (!baseline) return // No baseline yet — first version
+
+  // Check FPS regression
+  if (fpsEvents.length > 0) {
+    const avgFps = fpsEvents.reduce((s, e) => s + (e.fps || 0), 0) / fpsEvents.length
+    if (baseline.avg_fps && avgFps < baseline.avg_fps * 0.85) {
+      db.prepare(`
+        INSERT INTO alerts (project_id, metric, baseline_version, current_version, baseline_value, current_value, change_percent, severity)
+        VALUES (?, 'fps', ?, ?, ?, ?, ?, ?)
+      `).run(projectId, 'baseline', version, baseline.avg_fps, avgFps,
+        Math.round(((avgFps - baseline.avg_fps) / baseline.avg_fps) * 100), 'warning')
+    }
+  }
+
+  // Check startup regression
+  if (startupEvents.length > 0) {
+    const avgStartup = startupEvents.reduce((s, e) => s + (e.totalMs || 0), 0) / startupEvents.length
+    if (baseline.avg_startup_ms && avgStartup > baseline.avg_startup_ms * 1.2) {
+      db.prepare(`
+        INSERT INTO alerts (project_id, metric, baseline_version, current_version, baseline_value, current_value, change_percent, severity)
+        VALUES (?, 'startup', ?, ?, ?, ?, ?, ?)
+      `).run(projectId, 'baseline', version, baseline.avg_startup_ms, avgStartup,
+        Math.round(((avgStartup - baseline.avg_startup_ms) / baseline.avg_startup_ms) * 100), 'critical')
+    }
+  }
+
+  // Check crash spike
+  if (crashEvents.length > 0) {
+    db.prepare(`
+      INSERT INTO alerts (project_id, metric, baseline_version, current_version, baseline_value, current_value, change_percent, severity)
+      VALUES (?, 'crash', ?, ?, ?, ?, ?, ?)
+    `).run(projectId, 'baseline', version, 0, crashEvents.length, 100, 'critical')
+  }
+
+  // Update version_metrics rolling average
+  db.prepare(`
+    INSERT INTO version_metrics (project_id, app_version, avg_fps, avg_startup_ms, session_count)
+    VALUES (?, ?, ?, ?, 1)
+    ON CONFLICT(project_id, app_version) DO UPDATE SET
+      avg_fps        = (avg_fps * session_count + excluded.avg_fps) / (session_count + 1),
+      avg_startup_ms = (avg_startup_ms * session_count + excluded.avg_startup_ms) / (session_count + 1),
+      session_count  = session_count + 1,
+      computed_at    = strftime('%s','now') * 1000
+  `).run(
+    projectId, version,
+    fpsEvents.length > 0 ? fpsEvents.reduce((s, e) => s + (e.fps || 0), 0) / fpsEvents.length : 0,
+    startupEvents.length > 0 ? startupEvents[0].totalMs || 0 : 0
+  )
 }
 
 // ── Start server ──────────────────────────────────────────────────────────────

@@ -13,11 +13,12 @@ import { SessionHistoryTab }  from '@/components/SessionHistoryTab'
 import { ReplayBanner }       from '@/components/ReplayBanner'
 import { useReproduceTrace }  from '@/hooks/useReproduceTrace'
 import { AnalyticsTab }      from '@/components/AnalyticsTab'
+import { AlertsTab }         from '@/components/AlertsTab'
 import { simulateEvents }     from '@/components/DeviceTwin'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
-type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions'
+type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions' | 'alerts'
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
@@ -85,6 +86,16 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
     icon: (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="2" y="3" width="12" height="2.5" rx="0.5" /><rect x="2" y="7" width="12" height="2.5" rx="0.5" /><rect x="2" y="11" width="7" height="2.5" rx="0.5" />
+      </svg>
+    ),
+  },
+  {
+    id: 'alerts', label: 'ALERTS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M8 2L14 13H2L8 2z" />
+        <line x1="8" y1="7" x2="8" y2="10" />
+        <circle cx="8" cy="11.5" r="0.6" fill="currentColor" />
       </svg>
     ),
   },
@@ -198,6 +209,7 @@ export default function Dashboard() {
                 {tab === 'heatmap'     && 'SCREEN HEATMAP'}
                 {tab === 'diagnostics' && 'DIAGNOSTICS'}
                 {tab === 'sessions'    && 'SESSION HISTORY'}
+                {tab === 'alerts'      && 'REGRESSION ALERTS'}
               </span>
             )}
           </div>
@@ -303,6 +315,10 @@ export default function Dashboard() {
 
           {tab === 'sessions' && (
             <SessionHistoryTab />
+          )}
+
+          {tab === 'alerts' && (
+            <AlertsTab />
           )}
 
         </div>
