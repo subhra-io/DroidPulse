@@ -1,8 +1,6 @@
 # DroidPulse Analytics Stack
 # The Mixpanel killer for mobile - complete analytics infrastructure
 
-version: '3.8'
-
 services:
   # ClickHouse - High-performance analytics database
   clickhouse:
