@@ -1,42 +1,25 @@
 {
   "name": "droidpulse-analytics-api",
   "version": "1.0.0",
-  "description": "DroidPulse Analytics API - The Mixpanel killer for mobile",
-  "main": "analytics-api.js",
+  "description": "DroidPulse Analytics API",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node analytics-api.js",
-    "dev": "nodemon analytics-api.js",
-    "test": "jest",
-    "docker:build": "docker build -f Dockerfile.analytics -t droidpulse-analytics .",
-    "docker:run": "docker run -p 3001:3001 -p 8081:8081 droidpulse-analytics"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
-  "keywords": [
-    "analytics",
-    "mobile",
-    "performance",
-    "monitoring",
-    "clickhouse",
-    "real-time"
-  ],
-  "author": "DroidPulse Team",
   "license": "MIT",
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "clickhouse": "^2.6.0",
-    "compression": "^1.7.4",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.18.2",
-    "helmet": "^7.1.0",
-    "jsonwebtoken": "^9.0.3",
-    "rate-limiter-flexible": "^2.4.1",
-    "redis": "^4.6.10",
+    "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.1",
-    "ws": "^8.14.2"
+    "ws": "^8.16.0"
   },
   "devDependencies": {
-    "jest": "^29.7.0",
-    "nodemon": "^3.0.1",
-    "supertest": "^6.3.3"
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0"
