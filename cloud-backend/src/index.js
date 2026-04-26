@@ -5,6 +5,11 @@ const http       = require('http')
 const WebSocket  = require('ws')
 const Database   = require('better-sqlite3')
 const { initSchema } = require('./db/schema')
+const {
+  requireAuth, requireSdkKey, requirePermission,
+  scopeProject, createAuthRoutes, createUserRoutes,
+  auditLog, PERMISSIONS, ROLE_DASHBOARD_ACCESS,
+} = require('./auth')
 
 const app    = express()
 const server = http.createServer(app)
@@ -12,27 +17,19 @@ const wss    = new WebSocket.Server({ server })
 
 // ── Database ──────────────────────────────────────────────────────────────────
 const db = new Database(process.env.DB_PATH || './droidpulse.db')
-db.pragma('journal_mode = WAL') // Better concurrent performance
+db.pragma('journal_mode = WAL')
 initSchema(db)
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors())
 app.use(express.json({ limit: '5mb' }))
 
-// ── Auth middleware ───────────────────────────────────────────────────────────
-const authenticate = (req, res, next) => {
-  const auth = req.headers.authorization
-  if (!auth?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing API key' })
-  }
-  const apiKey = auth.replace('Bearer ', '')
-  const project = db.prepare('SELECT * FROM projects WHERE api_key = ?').get(apiKey)
-  if (!project) {
-    return res.status(401).json({ error: 'Invalid API key' })
-  }
-  req.project = project
-  next()
-}
+// ── Auth routes ───────────────────────────────────────────────────────────────
+app.use('/auth',       createAuthRoutes(db, auditLog))
+app.use('/admin/users', createUserRoutes(db, auditLog))
+
+// ── Old API-key auth (kept for SDK backward compat) ───────────────────────────
+const authenticate = requireSdkKey(db)
 
 // ── WebSocket: broadcast to dashboard clients ─────────────────────────────────
 const dashboardClients = new Map() // projectId → Set<WebSocket>
@@ -384,6 +381,33 @@ app.get('/api/alerts', authenticate, (req, res) => {
     ORDER BY created_at DESC LIMIT 50
   `).all(req.project.id)
   res.json({ alerts })
+})
+
+// ── GET /admin/audit — Audit log (admin+ only) ────────────────────────────────
+app.get('/admin/audit', requireAuth, requirePermission('audit:read'), (req, res) => {
+  const { limit = 100 } = req.query
+  const logs = db.prepare(`
+    SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?
+  `).all(parseInt(limit))
+  res.json({ logs })
+})
+
+// ── GET /admin/projects — List all projects (super_admin only) ────────────────
+app.get('/admin/projects', requireAuth, requirePermission('projects:write'), (req, res) => {
+  const projects = db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all()
+  res.json({ projects })
+})
+
+// ── POST /admin/projects — Create project (super_admin only) ──────────────────
+app.post('/admin/projects', requireAuth, requirePermission('projects:write'), (req, res) => {
+  const { name } = req.body
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const { v4: uuid } = require('uuid')
+  const id     = `proj-${uuid().slice(0, 8)}`
+  const apiKey = `dp_${uuid().replace(/-/g, '').slice(0, 32)}`
+  db.prepare('INSERT INTO projects (id, name, api_key) VALUES (?, ?, ?)').run(id, name, apiKey)
+  auditLog(db, req.user.id, req.user.email, 'create_project', `project:${id}`, `name=${name}`, req.ip)
+  res.status(201).json({ id, name, apiKey })
 })
 
 // ── POST /api/analytics/track — Custom event tracking ────────────────────────
