@@ -12,11 +12,12 @@ import { OverviewTab }        from '@/components/OverviewTab'
 import { SessionHistoryTab }  from '@/components/SessionHistoryTab'
 import { ReplayBanner }       from '@/components/ReplayBanner'
 import { useReproduceTrace }  from '@/hooks/useReproduceTrace'
+import { AnalyticsTab }      from '@/components/AnalyticsTab'
 import { simulateEvents }     from '@/components/DeviceTwin'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
 
-type Tab = 'overview' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions'
+type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions'
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
@@ -25,6 +26,16 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
         <rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" />
         <rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" />
+      </svg>
+    ),
+  },
+  {
+    id: 'analytics', label: 'ANALYTICS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M3 12V8l3-3 3 2 4-4" />
+        <circle cx="13" cy="3" r="1" fill="currentColor" />
+        <rect x="1" y="14" width="14" height="1" fill="currentColor" />
       </svg>
     ),
   },
@@ -182,6 +193,7 @@ export default function Dashboard() {
             ) : (
               <span className="text-[10px] font-mono text-gray-500 tracking-widest">
                 {tab === 'overview'    && 'SYSTEM OVERVIEW'}
+                {tab === 'analytics'   && 'ANALYTICS + PERFORMANCE'}
                 {tab === 'flow'        && 'FLOW TRACE JOURNEY'}
                 {tab === 'heatmap'     && 'SCREEN HEATMAP'}
                 {tab === 'diagnostics' && 'DIAGNOSTICS'}
@@ -254,6 +266,10 @@ export default function Dashboard() {
               cloudConnected={cloudConnected}
               loading={loading}
             />
+          )}
+
+          {tab === 'analytics' && (
+            <AnalyticsTab events={events} allEvents={activeEvents} />
           )}
 
           {tab === 'flow' && (

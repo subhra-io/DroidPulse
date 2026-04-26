@@ -1,0 +1,144 @@
+# DroidPulse Analytics Stack
+# The Mixpanel killer for mobile - complete analytics infrastructure
+
+version: '3.8'
+
+services:
+  # ClickHouse - High-performance analytics database
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: droidpulse-clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./cloud-backend/analytics-schema.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      CLICKHOUSE_DB: droidpulse
+      CLICKHOUSE_USER: analytics
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-droidpulse123}
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - droidpulse-network
+
+  # Analytics API Server
+  analytics-api:
+    build:
+      context: ./cloud-backend
+      dockerfile: Dockerfile.analytics
+    container_name: droidpulse-analytics-api
+    ports:
+      - "3001:3001"  # REST API
+      - "8081:8081"  # WebSocket for real-time updates
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: analytics
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-droidpulse123}
+      CLICKHOUSE_DB: droidpulse
+    depends_on:
+      - clickhouse
+    volumes:
+      - ./cloud-backend:/app
+    networks:
+      - droidpulse-network
+    restart: unless-stopped
+
+  # Redis for caching and real-time features
+  redis:
+    image: redis:7-alpine
+    container_name: droidpulse-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - droidpulse-network
+    restart: unless-stopped
+
+  # Dashboard Web App
+  dashboard:
+    build:
+      context: ./dashboard-web
+      dockerfile: Dockerfile
+    container_name: droidpulse-dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:8081
+    depends_on:
+      - analytics-api
+    networks:
+      - droidpulse-network
+    restart: unless-stopped
+
+  # Grafana for advanced analytics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: droidpulse-grafana
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - clickhouse
+    networks:
+      - droidpulse-network
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+    driver: local
+  redis_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  droidpulse-network:
+    driver: bridge
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# USAGE INSTRUCTIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# 1. Start the complete analytics stack:
+#    docker-compose -f docker-compose.analytics.yml up -d
+#
+# 2. Access services:
+#    - Dashboard: http://localhost:3000
+#    - Analytics API: http://localhost:3001
+#    - ClickHouse: http://localhost:8123
+#    - Grafana: http://localhost:3002 (admin/admin123)
+#
+# 3. Initialize database:
+#    The schema will be automatically created from analytics-schema.sql
+#
+# 4. Test the API:
+#    curl -X POST http://localhost:3001/api/track \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "event_name": "test_event",
+#        "user_id": "test_user",
+#        "properties": {"test": true},
+#        "performance_context": {
+#          "startup_time_ms": 1500,
+#          "performance_score": 85
+#        }
+#      }'
+#
+# 5. View insights:
+#    curl http://localhost:3001/api/insights/performance-revenue
+#
+# ═══════════════════════════════════════════════════════════════════════════════

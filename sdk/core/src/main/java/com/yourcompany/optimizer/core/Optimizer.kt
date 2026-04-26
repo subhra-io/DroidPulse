@@ -226,6 +226,118 @@ object DroidPulse {
         return PerformanceAnalyzer.analyze(minutesBack)
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // ANALYTICS APIs — The Mixpanel Killer for Mobile
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Track an event with automatic performance correlation.
+     * 
+     * This is THE killer feature - no other analytics tool can show:
+     * "Users with slow startup convert 31% less"
+     * 
+     * ```kotlin
+     * DroidPulse.track("purchase_completed", mapOf(
+     *     "amount" to 29.99,
+     *     "category" to "premium"
+     * ))
+     * ```
+     */
+    fun track(event: String, properties: Map<String, Any> = emptyMap()) {
+        if (!isInitialized) {
+            Logger.warn("Call DroidPulse.start() before tracking events")
+            return
+        }
+        
+        safeStart("Analytics.track") {
+            // Use existing performance analysis for correlation
+            val perfAnalysis = analyze(minutesBack = 1)
+            
+            val enrichedProperties = properties.toMutableMap().apply {
+                // Add performance context (UNIQUE VALUE PROP!)
+                put("startup_time_ms", perfAnalysis.startupTimeMs ?: 0L)
+                put("memory_usage_mb", perfAnalysis.memoryUsageMb ?: 0.0)
+                put("avg_fps", perfAnalysis.avgFps ?: 60.0)
+                put("crash_free_session", perfAnalysis.crashCount == 0)
+                put("performance_score", calculatePerformanceScore(perfAnalysis))
+            }
+            
+            // Emit through existing dispatcher
+            dispatcher.dispatch(AnalyticsEvent(
+                event = event,
+                properties = enrichedProperties,
+                timestamp = System.currentTimeMillis()
+            ))
+            
+            Logger.debug("📊 Tracked: $event with performance context")
+        }
+    }
+    
+    /**
+     * Identify a user with performance profile.
+     * 
+     * ```kotlin
+     * DroidPulse.identify("user_123", mapOf(
+     *     "email" to "user@example.com",
+     *     "plan" to "premium"
+     * ))
+     * ```
+     */
+    fun identify(userId: String, properties: Map<String, Any> = emptyMap()) {
+        track("user_identified", properties + mapOf(
+            "user_id" to userId,
+            "identified_at" to System.currentTimeMillis()
+        ))
+    }
+    
+    /**
+     * Track revenue with performance impact analysis.
+     * 
+     * ```kotlin
+     * DroidPulse.revenue(29.99, "USD")
+     * ```
+     */
+    fun revenue(amount: Double, currency: String = "USD", event: String = "revenue") {
+        track(event, mapOf(
+            "revenue" to amount,
+            "currency" to currency,
+            "revenue_type" to "purchase"
+        ))
+    }
+    
+    /**
+     * Track funnel steps with performance correlation.
+     * 
+     * ```kotlin
+     * DroidPulse.funnel("checkout_started", "purchase_flow")
+     * ```
+     */
+    fun funnel(step: String, funnelName: String, properties: Map<String, Any> = emptyMap()) {
+        track("funnel_step", properties + mapOf(
+            "funnel_name" to funnelName,
+            "step_name" to step
+        ))
+    }
+    
+    private fun calculatePerformanceScore(analysis: PerformanceAnalyzer.Analysis): Int {
+        var score = 100
+        
+        // Startup penalty
+        val startupMs = analysis.startupTimeMs ?: 0L
+        if (startupMs > 4000) score -= 30
+        else if (startupMs > 2000) score -= 15
+        
+        // Memory penalty
+        val memoryMb = analysis.memoryUsageMb ?: 0.0
+        if (memoryMb > 400) score -= 25
+        else if (memoryMb > 200) score -= 10
+        
+        // Crash penalty
+        if (analysis.crashCount > 0) score -= 40
+        
+        return maxOf(0, score)
+    }
+
     /**
      * Zero crash guarantee wrapper.
      * Any exception inside a tracker is caught and logged.
