@@ -32,13 +32,11 @@ class AnalyticsUploader(
         val errors = config.validate()
         if (errors.isNotEmpty()) {
             Logger.error("AnalyticsUploader: Invalid configuration: ${errors.joinToString(", ")}")
-            return
+        } else {
+            Logger.info("📊 AnalyticsUploader initialized for ${config.endpoint}")
+            // Start periodic upload
+            startPeriodicUpload()
         }
-        
-        Logger.info("📊 AnalyticsUploader initialized for ${config.endpoint}")
-        
-        // Start periodic upload
-        startPeriodicUpload()
     }
     
     /**

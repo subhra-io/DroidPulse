@@ -48,7 +48,7 @@ internal class CloudUploader(
         // Upload events in batches
         DroidPulse.scope.launch {
             while (isActive) {
-                delay(config.uploadIntervalMs)
+                delay(config.uploadInterval)
                 if (eventQueue.isNotEmpty()) {
                     uploadBatch()
                 }
@@ -103,7 +103,7 @@ internal class CloudUploader(
         try {
             val body = JSONObject().apply {
                 put("sessionId",   sessionId)
-                put("projectId",   config.projectId)
+                put("projectId",   config.appId)
                 put("appVersion",  appVersion)
                 put("buildType",   buildType)
                 put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}")
@@ -135,7 +135,7 @@ internal class CloudUploader(
 
         try {
             val body = JSONObject().apply {
-                put("projectId", config.projectId)
+                put("projectId", config.appId)
                 put("sessionId", sessionId)
                 put("events",    JSONArray(batch))
             }

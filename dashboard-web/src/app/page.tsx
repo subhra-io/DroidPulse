@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { SplashScreen }    from '@/components/SplashScreen'
 import { useWebSocket }    from '@/hooks/useWebSocket'
 import { useCloudEvents }  from '@/hooks/useCloudEvents'
@@ -15,6 +15,7 @@ import { useReproduceTrace }  from '@/hooks/useReproduceTrace'
 import { AnalyticsTab }      from '@/components/AnalyticsTab'
 import { AlertsTab }         from '@/components/AlertsTab'
 import { AdminPanel }        from '@/components/AdminPanel'
+import { LoginScreen }       from '@/components/LoginScreen'
 import { simulateEvents }     from '@/components/DeviceTwin'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
@@ -110,22 +111,41 @@ export default function Dashboard() {
   const [splashDone, setSplashDone] = useState(false)
   const { state: replay, reproduce, pause, resume, reset: exitReplay } = useReproduceTrace(sendCommand)
 
-  // Auth state — in production this comes from a login flow / localStorage
-  const [authToken] = useState<string>(
-    typeof window !== 'undefined'
-      ? localStorage.getItem('dp_token') || ''
-      : ''
-  )
-  const [userRole] = useState<string>(
-    typeof window !== 'undefined'
-      ? localStorage.getItem('dp_role') || 'developer'
-      : 'developer'
-  )
-  const isAdmin = ['super_admin', 'admin'].includes(userRole)
+  // Auth state — start empty to match server render, hydrate from localStorage on client
+  const [authToken, setAuthToken] = useState<string>('')
+  const [currentUser, setCurrentUser] = useState<any>(null)
 
-  // Device Twin simulation state
+  useEffect(() => {
+    const token = localStorage.getItem('dp_token') || ''
+    const user = (() => {
+      try { return JSON.parse(localStorage.getItem('dp_user') || 'null') } catch { return null }
+    })()
+    setAuthToken(token)
+    setCurrentUser(user)
+  }, [])
+  const isAdmin = ['super_admin', 'admin'].includes(currentUser?.role || '')
+
+  // Device Twin simulation state — must be declared before any early return
   const [twinEvents, setTwinEvents]   = useState<any[] | null>(null)
   const [twinProfile, setTwinProfile] = useState<string | null>(null)
+
+  const handleLogin = (token: string, user: any) => {
+    setAuthToken(token)
+    setCurrentUser(user)
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('dp_token')
+    localStorage.removeItem('dp_role')
+    localStorage.removeItem('dp_user')
+    setAuthToken('')
+    setCurrentUser(null)
+  }
+
+  // Show login if not authenticated
+  if (!authToken || !currentUser) {
+    return <LoginScreen onLogin={handleLogin} />
+  }
 
   // Active events — twin simulation overrides real events when active
   const activeEvents = twinEvents ?? (replay.phase !== 'idle' ? replay.visibleEvents : events)
@@ -191,18 +211,23 @@ export default function Dashboard() {
 
         {/* Bottom links */}
         <div className="px-2 pb-6 space-y-0.5">
-          <div className="flex items-center gap-3 px-3 py-2.5 text-xs font-mono text-gray-600 tracking-widest">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="2" y="2" width="12" height="12" rx="1" /><line x1="5" y1="6" x2="11" y2="6" /><line x1="5" y1="9" x2="9" y2="9" />
-            </svg>
-            DOCS
+          <div className="px-3 py-2 text-[9px] font-mono text-gray-700 truncate">
+            {currentUser?.email}
           </div>
-          <div className="flex items-center gap-3 px-3 py-2.5 text-xs font-mono text-gray-600 tracking-widest">
+          <div className="px-3 py-1 mb-1">
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#1a1a1a] border border-[#2a2a2a] text-gray-500">
+              {currentUser?.role?.toUpperCase()}
+            </span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-xs font-mono text-gray-600 hover:text-red-400 tracking-widest transition-colors"
+          >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M10 2H6L5 5H3a1 1 0 00-1 1v7a1 1 0 001 1h10a1 1 0 001-1V6a1 1 0 00-1-1h-2L10 2z" />
+              <path d="M6 2H3a1 1 0 00-1 1v10a1 1 0 001 1h3M10 11l3-3-3-3M13 8H6" />
             </svg>
             LOGOUT
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -275,7 +300,7 @@ export default function Dashboard() {
             </svg>
             {/* avatar */}
             <div className="w-7 h-7 rounded bg-[#1e3a5f] border border-blue-800 flex items-center justify-center text-[10px] font-mono font-bold text-blue-300">
-              JD
+              {currentUser?.name?.slice(0,2).toUpperCase() || 'JD'}
             </div>
             {tab === 'heatmap' && (
               <span className="flex items-center gap-1.5 text-[10px] font-mono text-green-400 ml-1">

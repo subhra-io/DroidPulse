@@ -37,7 +37,11 @@ object PerformanceAnalyzer {
         val topIssue: Issue?,
         val allIssues: List<Issue>,
         val analyzedEvents: Int,
-        val timeWindowMinutes: Int
+        val timeWindowMinutes: Int,
+        val startupTimeMs: Long? = null,
+        val memoryUsageMb: Double? = null,
+        val avgFps: Double? = null,
+        val crashCount: Int = 0
     )
 
     enum class IssueSeverity { CRITICAL, HIGH, MEDIUM, LOW }
@@ -240,7 +244,11 @@ object PerformanceAnalyzer {
             topIssue           = topIssue,
             allIssues          = sortedIssues,
             analyzedEvents     = events.size,
-            timeWindowMinutes  = minutesBack
+            timeWindowMinutes  = minutesBack,
+            startupTimeMs      = screenEvents.firstOrNull()?.duration,
+            memoryUsageMb      = latestMemory?.usedMemoryMb?.toDouble(),
+            avgFps             = if (fpsEvents.isNotEmpty()) fpsEvents.map { it.fps }.average() else null,
+            crashCount         = crashes.size
         )
     }
 

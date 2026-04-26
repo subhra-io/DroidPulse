@@ -117,7 +117,9 @@ data class CloudConfig(
          * Create configuration for development/testing
          */
         fun development(apiKey: String = "dev_key") = CloudConfig(
-            endpoint = "http://localhost:3001",
+            // 10.0.2.2 is the Android emulator's alias for the host machine's localhost.
+            // Use a real IP or hostname when testing on a physical device.
+            endpoint = "http://10.0.2.2:3001",
             apiKey = apiKey,
             debug = true,
             uploadInterval = 10000, // Upload every 10 seconds in dev
