@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 
-const CLOUD_API  = process.env.NEXT_PUBLIC_CLOUD_API  || 'http://localhost:3002'
+const CLOUD_API  = process.env.NEXT_PUBLIC_CLOUD_API  || 'http://localhost:3001'
 const CLOUD_KEY  = process.env.NEXT_PUBLIC_CLOUD_KEY  || 'dp_live_demo_key_12345'
 const PROJECT_ID = process.env.NEXT_PUBLIC_PROJECT_ID || 'demo-project'
-const CLOUD_WS   = (process.env.NEXT_PUBLIC_CLOUD_WS  || 'ws://localhost:3002')
+const CLOUD_WS   = (process.env.NEXT_PUBLIC_CLOUD_WS  || 'ws://localhost:3001')
 
 /**
  * Fetches events from the cloud backend for the latest session.
