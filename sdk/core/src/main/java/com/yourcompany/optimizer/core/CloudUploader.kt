@@ -1,6 +1,8 @@
 package com.yourcompany.optimizer.core
 
 import android.content.Context
+import android.location.Location
+import android.location.LocationManager
 import android.os.Build
 import android.provider.Settings
 import kotlinx.coroutines.delay
@@ -39,6 +41,33 @@ internal class CloudUploader(
 
     private var retryDelayMs = 5000L
     private var sessionCreated = false
+
+    /**
+     * Returns the best last-known location available without requesting updates.
+     * Uses NETWORK provider first (fast, low-power), falls back to GPS.
+     * Returns null if permission is not granted or no location is cached.
+     */
+    private fun getLastKnownLocation(): Location? {
+        return try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val providers = listOf(
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.GPS_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER
+            )
+            providers
+                .filter { lm.isProviderEnabled(it) }
+                .mapNotNull {
+                    @Suppress("MissingPermission")
+                    lm.getLastKnownLocation(it)
+                }
+                .maxByOrNull { it.time } // pick most recent
+        } catch (_: SecurityException) {
+            null // permission not granted — skip silently
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     fun start() {
         // Create session on cloud
@@ -102,6 +131,11 @@ internal class CloudUploader(
 
     private suspend fun createSession() {
         try {
+            // Prefer explicit config values; fall back to last-known device location
+            val location = getLastKnownLocation()
+            val lat = config.deviceLatitude  ?: location?.latitude
+            val lon = config.deviceLongitude ?: location?.longitude
+
             val body = JSONObject().apply {
                 put("sessionId",   sessionId)
                 put("projectId",   config.appId)
@@ -109,9 +143,9 @@ internal class CloudUploader(
                 put("buildType",   buildType)
                 put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("osVersion",   "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-                put("deviceId",     config.deviceId ?: Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID))
-                config.deviceLatitude?.let { put("latitude", it) }
-                config.deviceLongitude?.let { put("longitude", it) }
+                put("deviceId",    config.deviceId ?: Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID))
+                lat?.let { put("latitude",  it) }
+                lon?.let { put("longitude", it) }
                 put("startedAt",   System.currentTimeMillis())
             }
 
