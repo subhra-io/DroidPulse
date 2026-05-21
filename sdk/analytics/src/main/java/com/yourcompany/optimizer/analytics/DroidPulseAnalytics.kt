@@ -295,10 +295,10 @@ object DroidPulseAnalytics {
             startupTimeMs    = analyzer.startupTimeMs ?: 0L,
             memoryUsageMb    = analyzer.memoryUsageMb ?: 0.0,
             avgFps           = analyzer.avgFps ?: 60.0,
-            avgApiLatencyMs  = analyzer.avgApiLatencyMs ?: 0L,
+            avgApiLatencyMs  = 0L,
             crashFreeSession = analyzer.crashCount == 0,
             deviceTier       = determineDeviceTier(analyzer),
-            networkType      = analyzer.networkType ?: "unknown"
+            networkType      = "unknown"
         )
     }
 
@@ -308,7 +308,7 @@ object DroidPulseAnalytics {
             "avg_startup_time_ms"    to (analysis.startupTimeMs ?: 0L),
             "avg_memory_usage_mb"    to (analysis.memoryUsageMb ?: 0.0),
             "avg_fps"                to (analysis.avgFps ?: 60.0),
-            "crash_rate"             to analysis.crashRate,
+            "crash_rate"             to analysis.crashCount.toDouble(),
             "device_performance_tier" to determineDeviceTier(analysis),
             "performance_score"      to calculateOverallPerformanceScore(capturePerformanceSnapshot())
         )
