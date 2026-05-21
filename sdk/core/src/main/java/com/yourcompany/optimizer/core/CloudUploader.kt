@@ -109,7 +109,7 @@ internal class CloudUploader(
                 put("buildType",   buildType)
                 put("deviceModel", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("osVersion",   "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-                put("device_id",   config.deviceId ?: Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID))
+                put("deviceId",     config.deviceId ?: Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID))
                 config.deviceLatitude?.let { put("latitude", it) }
                 config.deviceLongitude?.let { put("longitude", it) }
                 put("startedAt",   System.currentTimeMillis())
