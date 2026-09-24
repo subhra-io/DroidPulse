@@ -9,6 +9,9 @@ export interface SessionRecord {
   build_type: string
   device_model: string
   os_version: string
+  device_id?: string
+  latitude?: number | null
+  longitude?: number | null
   started_at: number
   ended_at: number | null
   event_count: number

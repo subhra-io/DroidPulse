@@ -23,7 +23,7 @@ module.exports.router = (db, requireAuth, requirePermission) => {
     const fromDate = new Date(fromTs).toISOString().slice(0, 10)
     const toDate   = new Date(toTs).toISOString().slice(0, 10)
 
-    const transitions = db.prepare(`
+    const rows = db.prepare(`
       SELECT
         from_event,
         to_event,
@@ -35,6 +35,13 @@ module.exports.router = (db, requireAuth, requirePermission) => {
       ORDER BY total DESC
       LIMIT ?
     `).all(req.project.id, fromDate, toDate, parseInt(limit))
+
+    const transitions = rows.map(r => ({
+      from: r.from_event,
+      to: r.to_event,
+      count: r.total,
+      avgMs: Math.round(r.avg_duration_ms)
+    }))
 
     res.json({ transitions, period: { from: fromDate, to: toDate } })
   })

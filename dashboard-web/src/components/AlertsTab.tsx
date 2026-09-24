@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useAutoRefresh, REFRESH_OPTIONS } from '@/hooks/useAutoRefresh'
 
 const CLOUD_API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 const CLOUD_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dp_live_demo_key_12345'

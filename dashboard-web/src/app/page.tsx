@@ -22,11 +22,13 @@ import SegmentationTab       from '@/components/SegmentationTab'
 import ExperimentsTab        from '@/components/ExperimentsTab'
 import UserPathsTab          from '@/components/UserPathsTab'
 import SuperPropertiesPanel  from '@/components/SuperPropertiesPanel'
+import GrowthTab             from '@/components/GrowthTab'
+import PehchaanAutomation   from '@/components/PehchaanAutomation'
 
 const WS_URL  = process.env.NEXT_PUBLIC_WS_URL  || 'ws://localhost:8080'
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
-type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions' | 'alerts' | 'retention' | 'segmentation' | 'experiments' | 'paths' | 'admin'
+type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions' | 'alerts' | 'retention' | 'segmentation' | 'experiments' | 'paths' | 'growth' | 'automation' | 'admin'
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
@@ -137,6 +139,24 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="3" cy="8" r="2" /><circle cx="13" cy="4" r="2" /><circle cx="13" cy="12" r="2" />
         <path d="M5 8h3l3-4M5 8h3l3 4" />
+      </svg>
+    ),
+  },
+  {
+    id: 'growth', label: 'GROWTH',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M2 13l4-5 3 2 5-7" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="14" cy="3" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'automation', label: 'AUTOMATE',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="2.5" />
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" />
       </svg>
     ),
   },
@@ -310,6 +330,8 @@ export default function Dashboard() {
                 {tab === 'segmentation'  && 'SEGMENTATION + SUPER PROPERTIES'}
                 {tab === 'experiments'   && 'A/B EXPERIMENTS'}
                 {tab === 'paths'         && 'USER PATHS & FLOW ANALYSIS'}
+                {tab === 'growth'        && 'GROWTH · INSTALLS · FRAUD ANALYTICS'}
+                {tab === 'automation'    && 'PEHCHAAN AUTOMATION · EXPERIMENTS · FRAUD · FUNNELS'}
                 {tab === 'admin'         && 'ADMIN PANEL'}
               </span>
             )}
@@ -439,6 +461,14 @@ export default function Dashboard() {
 
           {tab === 'paths' && (
             <UserPathsTab projectId="demo-project" />
+          )}
+
+          {tab === 'growth' && (
+            <GrowthTab projectId="demo-project" />
+          )}
+
+          {tab === 'automation' && (
+            <PehchaanAutomation />
           )}
 
           {tab === 'admin' && isAdmin && (

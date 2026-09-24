@@ -27,6 +27,9 @@ const initSchema = (db) => {
       build_type   TEXT,
       device_model TEXT,
       os_version   TEXT,
+      device_id    TEXT,
+      latitude     REAL,
+      longitude    REAL,
       started_at   INTEGER,
       ended_at     INTEGER,
       event_count  INTEGER DEFAULT 0,
@@ -253,7 +256,22 @@ const initSchema = (db) => {
       completed_at INTEGER
     );
 
+    -- ── FEATURE 8: Fraud Flags ────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS fraud_flags (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id   TEXT NOT NULL,
+      session_id   TEXT,
+      device_model TEXT,
+      user_id      TEXT,
+      signal_type  TEXT NOT NULL,
+      severity     TEXT DEFAULT 'HIGH',
+      reason       TEXT,
+      flagged_by   TEXT,
+      created_at   INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+    );
+
     -- ── INDEXES ───────────────────────────────────────────────────────────────
+    CREATE INDEX IF NOT EXISTS idx_fraud_flags          ON fraud_flags(project_id, signal_type);
     CREATE INDEX IF NOT EXISTS idx_events_session       ON events(session_id);
     CREATE INDEX IF NOT EXISTS idx_events_project       ON events(project_id);
     CREATE INDEX IF NOT EXISTS idx_events_type          ON events(type);
@@ -275,6 +293,14 @@ const initSchema = (db) => {
     CREATE INDEX IF NOT EXISTS idx_super_props          ON super_properties(project_id);
     CREATE INDEX IF NOT EXISTS idx_export_jobs          ON export_jobs(project_id, status);
   `)
+
+  // ── Migrations: add columns that may be missing from older DBs ──────────────
+  const sessionCols = db.prepare("PRAGMA table_info(sessions)").all().map(c => c.name)
+  if (!sessionCols.includes('device_id'))  db.exec("ALTER TABLE sessions ADD COLUMN device_id  TEXT")
+  if (!sessionCols.includes('latitude'))   db.exec("ALTER TABLE sessions ADD COLUMN latitude   REAL")
+  if (!sessionCols.includes('longitude'))  db.exec("ALTER TABLE sessions ADD COLUMN longitude  REAL")
+  if (!sessionCols.includes('device_model')) db.exec("ALTER TABLE sessions ADD COLUMN device_model TEXT")
+  if (!sessionCols.includes('os_version'))   db.exec("ALTER TABLE sessions ADD COLUMN os_version   TEXT")
 
   // Seed demo project
   const existing = db.prepare('SELECT id FROM projects WHERE id = ?').get('demo-project')

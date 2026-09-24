@@ -64,6 +64,8 @@ app.use('/api/segment',          dashboardAuthMiddleware, require('./routes/segm
 app.use('/api/experiments',      dashboardAuthMiddleware, require('./routes/experiments').router(db,      noopAuth, requirePermission, requireSdkKey(db)))
 app.use('/api/alert-channels',   dashboardAuthMiddleware, require('./routes/alerting').router(db,         noopAuth, requirePermission))
 app.use('/api/export',           dashboardAuthMiddleware, require('./routes/dataExport').router(db,       noopAuth, requirePermission))
+app.use('/api/installs',         dashboardAuthMiddleware, require('./routes/installAnalytics').router(db, noopAuth, requirePermission))
+app.use('/api/fraud',            dashboardAuthMiddleware, require('./routes/fraudAnalytics').router(db,   noopAuth, requirePermission))
 
 // ── WebSocket: broadcast to dashboard clients ─────────────────────────────────
 const dashboardClients = new Map()
@@ -84,27 +86,170 @@ const broadcast = (projectId, data) => {
   clients.forEach(ws => { if (ws.readyState === WebSocket.OPEN) ws.send(msg) })
 }
 
+const asNumber = (value, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+const asBooleanInt = (value, fallback = true) => {
+  if (value === undefined || value === null) return fallback ? 1 : 0
+  if (typeof value === 'boolean') return value ? 1 : 0
+  if (typeof value === 'number') return value === 0 ? 0 : 1
+  if (typeof value === 'string') return ['true', '1', 'yes'].includes(value.toLowerCase()) ? 1 : 0
+  return fallback ? 1 : 0
+}
+
+const ensureSession = (projectId, sessionId, defaults = {}) => {
+  if (!sessionId) return
+  const existing = db.prepare('SELECT id FROM sessions WHERE id = ? AND project_id = ?').get(sessionId, projectId)
+  if (existing) return
+  db.prepare(`
+    INSERT OR IGNORE INTO sessions
+      (id, project_id, app_version, build_type, device_model, os_version, device_id, started_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    sessionId,
+    projectId,
+    defaults.appVersion || defaults.app_version || 'unknown',
+    defaults.buildType || defaults.build_type || 'unknown',
+    defaults.deviceModel || defaults.device_model || null,
+    defaults.osVersion || defaults.os_version || null,
+    defaults.deviceId || defaults.device_id || null,
+    defaults.startedAt || defaults.started_at || Date.now()
+  )
+}
+
+const normaliseAnalyticsEvent = (evt, fallbackSessionId) => {
+  const props = { ...(evt.properties || {}) }
+  const perf = evt.performance_context || evt.performanceContext || {}
+  const eventName = evt.event_name || evt.event || evt.name
+  const sessionId = evt.session_id || evt.sessionId || props.session_id || fallbackSessionId
+
+  if (!eventName || !sessionId) return null
+
+  const userId = evt.user_id || evt.userId || props.user_id || props.hashed_uid || null
+  const startup = evt.startup_time_ms ?? evt.startupTimeMs ?? perf.startup_time_ms ?? props.startup_time_ms
+  const memory = evt.memory_mb ?? evt.memoryUsageMb ?? evt.memory_usage_mb ?? perf.memory_usage_mb ?? props.memory_usage_mb
+  const fps = evt.fps_avg ?? evt.avgFps ?? evt.avg_fps ?? perf.avg_fps ?? props.fps_avg ?? props.avg_fps
+  const perfScore = evt.perf_score ?? evt.performanceScore ?? perf.performance_score ?? props.performance_score
+  const crashFree = evt.crash_free ?? evt.crashFreeSession ?? perf.crash_free_session ?? props.crash_free_session
+
+  return {
+    sessionId,
+    eventName,
+    userId,
+    properties: props,
+    startupTimeMs: asNumber(startup, 0),
+    memoryMb: asNumber(memory, 0),
+    fpsAvg: asNumber(fps, 0),
+    perfScore: asNumber(perfScore, 0),
+    crashFree: asBooleanInt(crashFree, true),
+    revenue: asNumber(evt.revenue ?? props.revenue, 0),
+    currency: evt.currency || props.currency || 'USD',
+    timestamp: asNumber(evt.timestamp, Date.now()),
+  }
+}
+
+const storeAnalyticsEvents = (projectId, fallbackSessionId, analyticsEvents) => {
+  if (!Array.isArray(analyticsEvents) || analyticsEvents.length === 0) return 0
+
+  const insert = db.prepare(`
+    INSERT INTO analytics_events
+      (session_id, project_id, event_name, user_id, properties,
+       startup_time_ms, memory_mb, fps_avg, perf_score, crash_free, revenue, currency, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const insertFunnel = db.prepare(`
+    INSERT INTO funnel_events (session_id, project_id, user_id, funnel_name, step_name, perf_score, timestamp)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  let stored = 0
+  db.transaction(() => {
+    for (const raw of analyticsEvents) {
+      const evt = normaliseAnalyticsEvent(raw, fallbackSessionId)
+      if (!evt) continue
+
+      ensureSession(projectId, evt.sessionId, raw)
+      const mergedProps = mergeSuperProperties(db, projectId, evt.properties)
+
+      insert.run(
+        evt.sessionId,
+        projectId,
+        evt.eventName,
+        evt.userId || mergedProps.user_id || null,
+        JSON.stringify(mergedProps),
+        evt.startupTimeMs,
+        evt.memoryMb,
+        evt.fpsAvg,
+        evt.perfScore,
+        evt.crashFree,
+        evt.revenue,
+        evt.currency,
+        evt.timestamp
+      )
+
+      if (evt.eventName === 'funnel_step' && mergedProps.funnel_name && mergedProps.step_name) {
+        insertFunnel.run(
+          evt.sessionId,
+          projectId,
+          evt.userId || mergedProps.user_id || null,
+          mergedProps.funnel_name,
+          mergedProps.step_name,
+          evt.perfScore,
+          evt.timestamp
+        )
+      }
+
+      if (evt.userId || mergedProps.user_id) updateRetention(db, projectId, evt.userId || mergedProps.user_id)
+
+      recordPathStep(
+        db,
+        projectId,
+        evt.sessionId,
+        evt.userId || mergedProps.user_id || null,
+        evt.eventName,
+        mergedProps.screen || mergedProps.screen_name || null,
+        evt.timestamp
+      )
+
+      if (evt.userId || mergedProps.user_id) {
+        recordExperimentResult(db, projectId, evt.userId || mergedProps.user_id, evt.eventName, evt.revenue || 1)
+      }
+
+      stored++
+    }
+  })()
+
+  return stored
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '2.0.0', timestamp: Date.now(), features: [
+  res.json({ status: 'ok', version: '2.1.0', timestamp: Date.now(), features: [
     'super-properties', 'retention-cohorts', 'user-paths',
-    'segmentation', 'ab-testing', 'alerting', 'data-export'
+    'segmentation', 'ab-testing', 'alerting', 'data-export',
+    'install-analytics', 'fraud-analytics'
   ]})
 })
 
 // ── POST /api/sessions ────────────────────────────────────────────────────────
 app.post('/api/sessions', authenticate, (req, res) => {
-  const { sessionId, appVersion, buildType, deviceModel, osVersion, startedAt } = req.body
+  const { sessionId, appVersion, buildType, deviceModel, osVersion, deviceId, latitude, longitude, startedAt } = req.body
   if (!sessionId) return res.status(400).json({ error: 'sessionId required' })
 
   db.prepare(`
     INSERT OR REPLACE INTO sessions
-    (id, project_id, app_version, build_type, device_model, os_version, started_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(sessionId, req.project.id, appVersion, buildType, deviceModel, osVersion, startedAt)
+    (id, project_id, app_version, build_type, device_model, os_version, device_id, latitude, longitude, started_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(sessionId, req.project.id, appVersion, buildType, deviceModel, osVersion, deviceId, latitude, longitude, startedAt)
 
-  broadcast(req.project.id, { event: 'session_started', sessionId, appVersion, buildType, deviceModel, osVersion })
-  console.log(`📱 New session: ${sessionId.slice(0,8)} | ${appVersion} | ${deviceModel}`)
+  broadcast(req.project.id, {
+    event: 'session_started', sessionId, appVersion, buildType,
+    deviceModel, osVersion, deviceId, latitude, longitude,
+  })
+  console.log(`📱 New session: ${sessionId.slice(0,8)} | ${appVersion} | ${deviceModel} | ${deviceId ?? 'unknown'}`)
   res.status(201).json({ sessionId, projectId: req.project.id })
 })
 
@@ -140,9 +285,16 @@ app.post('/api/events', authenticate, (req, res) => {
     recordPathStep(db, req.project.id, sessionId, null, e.screenName || e.type, e.screenName, e.timestamp)
   })
 
+  const analyticsStored = storeAnalyticsEvents(
+    req.project.id,
+    sessionId,
+    events.filter(e => e.type === 'analytics' || e.event || e.event_name)
+  )
+
   broadcast(req.project.id, { event: 'events', sessionId, events })
+  if (analyticsStored > 0) broadcast(req.project.id, { event: 'analytics', sessionId, events: events.filter(e => e.type === 'analytics' || e.event || e.event_name) })
   setImmediate(() => checkRegressions(req.project.id, events))
-  res.json({ received: events.length })
+  res.json({ received: events.length, analyticsStored })
 })
 
 // ── GET /api/sessions ─────────────────────────────────────────────────────────
@@ -208,63 +360,40 @@ app.post('/api/analytics/track', authenticate, (req, res) => {
     return res.status(400).json({ error: 'sessionId and events[] required' })
   }
 
-  const insert = db.prepare(`
-    INSERT INTO analytics_events
-      (session_id, project_id, event_name, user_id, properties,
-       startup_time_ms, memory_mb, fps_avg, perf_score, crash_free, revenue, currency, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
+  const received = storeAnalyticsEvents(req.project.id, sessionId, analyticsEvents)
+  broadcast(req.project.id, { event: 'analytics', sessionId, events: analyticsEvents })
+  res.json({ received })
+})
 
-  const insertFunnel = db.prepare(`
-    INSERT INTO funnel_events (session_id, project_id, user_id, funnel_name, step_name, perf_score, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `)
+// ── POST /api/track/batch ────────────────────────────────────────────────────
+// Compatibility endpoint for SDK AnalyticsUploader and Pehchaan batch payloads.
+app.post('/api/track/batch', authenticate, (req, res) => {
+  const { events, batch_id: batchId } = req.body
+  if (!Array.isArray(events)) {
+    return res.status(400).json({ error: 'events[] required' })
+  }
 
+  const fallbackSessionId = req.body.sessionId || req.body.session_id || `batch-${batchId || Date.now()}`
+  const rawEvents = events.map(evt => ({
+    type: 'analytics',
+    timestamp: evt.timestamp || Date.now(),
+    sessionId: evt.session_id || evt.sessionId || evt.properties?.session_id || fallbackSessionId,
+    ...evt,
+  }))
+
+  const insertEvent = db.prepare(`INSERT INTO events (session_id, project_id, type, data, timestamp) VALUES (?, ?, ?, ?, ?)`)
   db.transaction(() => {
-    for (const evt of analyticsEvents) {
-      // FEATURE 5: Merge super properties (project-level globals)
-      const rawProps    = evt.properties || {}
-      const mergedProps = mergeSuperProperties(db, req.project.id, rawProps)
-
-      insert.run(
-        sessionId, req.project.id,
-        evt.event_name,
-        mergedProps.user_id || null,
-        JSON.stringify(mergedProps),
-        evt.startup_time_ms || 0,
-        evt.memory_mb || 0,
-        evt.fps_avg || 0,
-        evt.perf_score || 0,
-        evt.crash_free ? 1 : 0,
-        evt.revenue || 0,
-        evt.currency || 'USD',
-        evt.timestamp || Date.now()
-      )
-
-      // Auto-track funnel steps
-      if (evt.event_name === 'funnel_step' && mergedProps.funnel_name && mergedProps.step_name) {
-        insertFunnel.run(sessionId, req.project.id, mergedProps.user_id || null,
-          mergedProps.funnel_name, mergedProps.step_name, evt.perf_score || 0, evt.timestamp || Date.now())
-      }
-
-      // FEATURE 1: Update retention cohort
-      if (mergedProps.user_id) {
-        updateRetention(db, req.project.id, mergedProps.user_id)
-      }
-
-      // FEATURE 2: Record path step for flow analysis
-      recordPathStep(db, req.project.id, sessionId, mergedProps.user_id || null,
-        evt.event_name, mergedProps.screen || null, evt.timestamp || Date.now())
-
-      // FEATURE 4: Record experiment result
-      if (mergedProps.user_id) {
-        recordExperimentResult(db, req.project.id, mergedProps.user_id, evt.event_name, evt.revenue || 1)
-      }
+    for (const evt of rawEvents) {
+      const sid = evt.session_id || evt.sessionId || fallbackSessionId
+      ensureSession(req.project.id, sid, evt)
+      insertEvent.run(sid, req.project.id, 'analytics', JSON.stringify(evt), evt.timestamp || Date.now())
+      db.prepare(`UPDATE sessions SET event_count = event_count + 1 WHERE id = ?`).run(sid)
     }
   })()
 
-  broadcast(req.project.id, { event: 'analytics', sessionId, events: analyticsEvents })
-  res.json({ received: analyticsEvents.length })
+  const received = storeAnalyticsEvents(req.project.id, fallbackSessionId, rawEvents)
+  broadcast(req.project.id, { event: 'analytics', sessionId: fallbackSessionId, events: rawEvents })
+  res.json({ received, batchId: batchId || null })
 })
 
 // ── POST /api/analytics/identify ─────────────────────────────────────────────
@@ -350,6 +479,249 @@ app.get('/api/analytics/perf-correlation', authenticate, (req, res) => {
   `).all(req.project.id, event || null, event || null, fromTs, toTs)
 
   res.json({ correlation: rows })
+})
+
+// ── GET /api/analytics/impact ────────────────────────────────────────────────
+// PM-facing impact brief: converts raw Android telemetry into business impact,
+// likely cause, and a concrete developer handoff.
+app.get('/api/analytics/impact', authenticate, (req, res) => {
+  const { from, to, limit = 5 } = req.query
+  const fromTs = from ? parseInt(from) : Date.now() - 7 * 24 * 60 * 60 * 1000
+  const toTs   = to   ? parseInt(to)   : Date.now()
+  const maxRows = Math.max(1, Math.min(parseInt(limit), 10))
+
+  const total = db.prepare(`
+    SELECT
+      COUNT(*) AS events,
+      COUNT(DISTINCT user_id) AS users,
+      COUNT(DISTINCT session_id) AS sessions,
+      SUM(CASE WHEN perf_score < 70 THEN 1 ELSE 0 END) AS poor_perf_events,
+      SUM(CASE WHEN crash_free = 0 THEN 1 ELSE 0 END) AS crash_affected_events,
+      SUM(revenue) AS revenue,
+      SUM(CASE WHEN perf_score < 70 OR crash_free = 0 THEN revenue ELSE 0 END) AS revenue_at_risk,
+      AVG(perf_score) AS avg_perf,
+      AVG(startup_time_ms) AS avg_startup
+    FROM analytics_events
+    WHERE project_id = ? AND timestamp BETWEEN ? AND ?
+  `).get(req.project.id, fromTs, toTs)
+
+  const eventRisks = db.prepare(`
+    SELECT
+      event_name,
+      COUNT(*) AS count,
+      COUNT(DISTINCT user_id) AS users,
+      COUNT(DISTINCT session_id) AS sessions,
+      AVG(perf_score) AS avg_perf,
+      AVG(startup_time_ms) AS avg_startup,
+      AVG(fps_avg) AS avg_fps,
+      AVG(memory_mb) AS avg_memory,
+      SUM(CASE WHEN crash_free = 0 THEN 1 ELSE 0 END) AS crash_events,
+      SUM(revenue) AS revenue
+    FROM analytics_events
+    WHERE project_id = ? AND timestamp BETWEEN ? AND ?
+    GROUP BY event_name
+    HAVING count >= 2
+    ORDER BY
+      ((70 - AVG(perf_score)) * COUNT(*)) +
+      (SUM(CASE WHEN crash_free = 0 THEN 1 ELSE 0 END) * 50) +
+      (AVG(startup_time_ms) / 100) DESC
+    LIMIT ?
+  `).all(req.project.id, fromTs, toTs, maxRows)
+
+  const slowEndpoints = db.prepare(`
+    SELECT
+      COALESCE(json_extract(data,'$.url'), json_extract(data,'$.endpoint'), 'unknown') AS endpoint,
+      COUNT(*) AS calls,
+      AVG(COALESCE(json_extract(data,'$.duration'), json_extract(data,'$.durationMs'), 0)) AS avg_ms,
+      SUM(CASE
+        WHEN COALESCE(json_extract(data,'$.success'), 1) = 0
+          OR COALESCE(json_extract(data,'$.responseCode'), json_extract(data,'$.statusCode'), 200) >= 400
+        THEN 1 ELSE 0 END
+      ) AS failures
+    FROM events
+    WHERE project_id = ? AND type = 'network' AND timestamp BETWEEN ? AND ?
+    GROUP BY endpoint
+    HAVING calls >= 2
+    ORDER BY avg_ms DESC, failures DESC
+    LIMIT 3
+  `).all(req.project.id, fromTs, toTs)
+
+  const crashSessions = db.prepare(`
+    SELECT s.id, s.app_version, s.device_model, s.os_version, e.timestamp
+    FROM events e
+    JOIN sessions s ON s.id = e.session_id
+    WHERE e.project_id = ? AND e.type = 'crash' AND e.timestamp BETWEEN ? AND ?
+    ORDER BY e.timestamp DESC
+    LIMIT 5
+  `).all(req.project.id, fromTs, toTs)
+
+  const funnelRows = db.prepare(`
+    SELECT funnel_name, step_name, COUNT(DISTINCT COALESCE(user_id, session_id)) AS users,
+           AVG(perf_score) AS avg_perf, MIN(timestamp) AS first_seen
+    FROM funnel_events
+    WHERE project_id = ? AND timestamp BETWEEN ? AND ?
+    GROUP BY funnel_name, step_name
+    ORDER BY funnel_name, first_seen ASC
+  `).all(req.project.id, fromTs, toTs)
+
+  const funnelDropoffs = []
+  const byFunnel = new Map()
+  for (const row of funnelRows) {
+    if (!byFunnel.has(row.funnel_name)) byFunnel.set(row.funnel_name, [])
+    byFunnel.get(row.funnel_name).push(row)
+  }
+  for (const [funnel, steps] of byFunnel.entries()) {
+    for (let i = 1; i < steps.length; i++) {
+      const prev = steps[i - 1]
+      const curr = steps[i]
+      if (!prev.users) continue
+      const dropoffPct = Math.round((1 - curr.users / prev.users) * 100)
+      if (dropoffPct > 0) {
+        funnelDropoffs.push({
+          funnel,
+          from: prev.step_name,
+          to: curr.step_name,
+          previousUsers: prev.users,
+          currentUsers: curr.users,
+          dropoffPct,
+          avgPerf: Math.round(curr.avg_perf || 0),
+        })
+      }
+    }
+  }
+  funnelDropoffs.sort((a, b) => b.dropoffPct - a.dropoffPct)
+
+  const insights = []
+  const topRisk = eventRisks[0]
+  if (topRisk && (topRisk.avg_perf < 70 || topRisk.crash_events > 0 || topRisk.avg_startup > 1500)) {
+    const cause = topRisk.crash_events > 0
+      ? 'crashes in this journey'
+      : topRisk.avg_startup > 1500
+        ? 'slow startup or screen readiness'
+        : topRisk.avg_fps > 0 && topRisk.avg_fps < 45
+          ? 'rendering jank'
+          : 'low performance score'
+
+    insights.push({
+      id: 'top-event-risk',
+      severity: topRisk.avg_perf < 50 || topRisk.crash_events > 0 ? 'critical' : 'high',
+      title: `${topRisk.event_name} is the highest-impact risk`,
+      pmSummary: `${topRisk.users || topRisk.sessions} users hit ${topRisk.event_name} with an average performance score of ${Math.round(topRisk.avg_perf || 0)}.`,
+      likelyCause: cause,
+      businessImpact: `${topRisk.count} events, ${topRisk.crash_events || 0} crash-affected events, ${Math.round(topRisk.avg_startup || 0)}ms average startup context.`,
+      developerHandoff: [
+        `Inspect sessions around event "${topRisk.event_name}".`,
+        topRisk.avg_startup > 1500 ? 'Profile screen startup and move blocking work off the main thread.' : 'Compare good vs poor sessions for FPS, memory, and network timing.',
+        topRisk.crash_events > 0 ? 'Open crash trace replay for affected sessions before changing product flow.' : 'Check correlated slow API calls and rendering jank before changing UX.',
+      ],
+      evidence: {
+        eventName: topRisk.event_name,
+        users: topRisk.users,
+        sessions: topRisk.sessions,
+        avgPerf: Math.round(topRisk.avg_perf || 0),
+        avgStartupMs: Math.round(topRisk.avg_startup || 0),
+        avgFps: Math.round(topRisk.avg_fps || 0),
+        avgMemoryMb: Math.round(topRisk.avg_memory || 0),
+        crashEvents: topRisk.crash_events || 0,
+        revenue: Number((topRisk.revenue || 0).toFixed(2)),
+      },
+    })
+  }
+
+  if (funnelDropoffs[0]) {
+    const drop = funnelDropoffs[0]
+    insights.push({
+      id: 'funnel-dropoff',
+      severity: drop.dropoffPct >= 50 ? 'critical' : 'high',
+      title: `${drop.funnel} drops ${drop.dropoffPct}% at ${drop.to}`,
+      pmSummary: `${drop.previousUsers} users reached ${drop.from}, but only ${drop.currentUsers} reached ${drop.to}.`,
+      likelyCause: drop.avgPerf < 70 ? 'performance friction at the conversion step' : 'product or UX friction at the conversion step',
+      businessImpact: `${drop.previousUsers - drop.currentUsers} users did not continue to the next step in this period.`,
+      developerHandoff: [
+        `Replay sessions that stop after "${drop.from}".`,
+        drop.avgPerf < 70 ? 'Prioritize technical investigation before changing copy or layout.' : 'Review UX, validation errors, empty states, and eligibility rules.',
+        'Add a more specific event before and after the step to isolate the exact blocker.',
+      ],
+      evidence: drop,
+    })
+  }
+
+  if (slowEndpoints[0] && slowEndpoints[0].avg_ms > 1000) {
+    const endpoint = slowEndpoints[0]
+    insights.push({
+      id: 'slow-api',
+      severity: endpoint.avg_ms > 2000 || endpoint.failures > 0 ? 'critical' : 'medium',
+      title: `${endpoint.endpoint} is slowing user journeys`,
+      pmSummary: `${endpoint.calls} calls average ${Math.round(endpoint.avg_ms)}ms with ${endpoint.failures || 0} failures.`,
+      likelyCause: endpoint.failures > 0 ? 'failing backend dependency' : 'slow backend or oversized response',
+      businessImpact: 'This can inflate screen startup, delay funnel steps, and make product changes look worse than they are.',
+      developerHandoff: [
+        'Check backend logs and payload size for this endpoint.',
+        'Cache data that does not need to block first paint.',
+        'Track a product event immediately after the API response to measure conversion recovery.',
+      ],
+      evidence: {
+        endpoint: endpoint.endpoint,
+        calls: endpoint.calls,
+        avgMs: Math.round(endpoint.avg_ms || 0),
+        failures: endpoint.failures || 0,
+      },
+    })
+  }
+
+  if (crashSessions.length > 0) {
+    insights.push({
+      id: 'crash-handoff',
+      severity: 'critical',
+      title: `${crashSessions.length} recent crash sessions need developer review`,
+      pmSummary: 'Crashes should be treated as conversion blockers, not only engineering defects.',
+      likelyCause: 'runtime crash during active user sessions',
+      businessImpact: `${total.crash_affected_events || 0} analytics events were marked crash-affected in this period.`,
+      developerHandoff: [
+        'Open Diagnostics and replay the newest crash session.',
+        'Group crashes by app version and device model before assigning ownership.',
+        'Prioritize crashes that occur before activation, checkout, or paid feature usage.',
+      ],
+      evidence: { sessions: crashSessions },
+    })
+  } else if ((total.crash_affected_events || 0) > 0) {
+    insights.push({
+      id: 'crash-affected-events',
+      severity: 'critical',
+      title: `${total.crash_affected_events} analytics events were crash-affected`,
+      pmSummary: 'Users reached tracked product moments in sessions that were not crash-free.',
+      likelyCause: 'crash or unstable session near a product event',
+      businessImpact: 'Treat these as blocked journeys until the affected event path is reviewed.',
+      developerHandoff: [
+        'Filter analytics events where crash_free is false.',
+        'Add raw crash capture to the same session if missing from SDK ingestion.',
+        'Prioritize events tied to activation, checkout, identity, or paid feature use.',
+      ],
+      evidence: {
+        crashAffectedEvents: total.crash_affected_events || 0,
+        poorPerfEvents: total.poor_perf_events || 0,
+        avgPerf: Math.round(total.avg_perf || 0),
+      },
+    })
+  }
+
+  res.json({
+    window: { from: fromTs, to: toTs },
+    summary: {
+      events: total.events || 0,
+      users: total.users || 0,
+      sessions: total.sessions || 0,
+      poorPerfEvents: total.poor_perf_events || 0,
+      crashAffectedEvents: total.crash_affected_events || 0,
+      avgPerf: Math.round(total.avg_perf || 0),
+      avgStartupMs: Math.round(total.avg_startup || 0),
+      revenue: Number((total.revenue || 0).toFixed(2)),
+      revenueAtRisk: Number((total.revenue_at_risk || 0).toFixed(2)),
+    },
+    insights: insights.slice(0, maxRows),
+    slowEndpoints,
+    funnelDropoffs: funnelDropoffs.slice(0, maxRows),
+  })
 })
 
 // ── GET /api/analytics/users ──────────────────────────────────────────────────

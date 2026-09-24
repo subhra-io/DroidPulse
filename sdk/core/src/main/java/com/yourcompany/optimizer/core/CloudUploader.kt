@@ -115,6 +115,11 @@ internal class CloudUploader(
                         is String, is Number, is Boolean -> put(field.name, value)
                         is Enum<*> -> put(field.name, value.name)
                         is List<*> -> put(field.name, JSONArray(value))
+                        is Map<*, *> -> put(field.name, JSONObject().apply {
+                            value.forEach { (k, v) ->
+                                if (k != null) put(k.toString(), toJsonValue(v))
+                            }
+                        })
                         null -> {} // skip nulls
                     }
                 } catch (_: Exception) {}
@@ -126,6 +131,23 @@ internal class CloudUploader(
         // Prevent unbounded growth if network is down for a long time
         while (eventQueue.size > 500) {
             eventQueue.poll() // drop oldest
+        }
+    }
+
+    private fun toJsonValue(value: Any?): Any {
+        return when (value) {
+            null -> JSONObject.NULL
+            is String, is Number, is Boolean -> value
+            is Enum<*> -> value.name
+            is Map<*, *> -> JSONObject().apply {
+                value.forEach { (k, v) ->
+                    if (k != null) put(k.toString(), toJsonValue(v))
+                }
+            }
+            is Iterable<*> -> JSONArray().apply {
+                value.forEach { put(toJsonValue(it)) }
+            }
+            else -> value.toString()
         }
     }
 
