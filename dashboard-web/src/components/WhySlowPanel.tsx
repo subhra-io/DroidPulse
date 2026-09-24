@@ -63,7 +63,7 @@ function analyse(events: any[]): Issue[] {
   // ── 2. MAIN THREAD DATABASE ───────────────────────────────────────────────
   const mainThreadDb = db.filter(e => e.isMainThread)
   if (mainThreadDb.length > 0) {
-    const queries = [...new Set(mainThreadDb.map(e => e.query).filter(Boolean))].slice(0, 2)
+    const queries = Array.from(new Set(mainThreadDb.map(e => e.query).filter(Boolean))).slice(0, 2)
     const totalMs = mainThreadDb.reduce((s, e) => s + (e.durationMs ?? 0), 0)
     issues.push({
       severity: 'CRITICAL',
@@ -115,7 +115,7 @@ function analyse(events: any[]): Issue[] {
     }
 
     if (failed.length > 0 && failed.length / calls.length > 0.1) {
-      const codes = [...new Set(failed.map(e => e.responseCode).filter(Boolean))]
+      const codes = Array.from(new Set(failed.map(e => e.responseCode).filter(Boolean)))
       issues.push({
         severity: 'HIGH',
         category: 'Network',

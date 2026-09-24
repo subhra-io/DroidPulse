@@ -78,9 +78,9 @@ function analyseCrash(crash: any, events: any[]): CrashAnalysis {
 
   return {
     rootCause,
-    affectedFlow:   [...new Set(screens)].slice(-5),
-    suspectApis:    [...new Set(suspectApis)].slice(0, 4),
-    suspectQueries: [...new Set(suspectQueries)].slice(0, 3),
+    affectedFlow:   Array.from(new Set(screens)).slice(-5),
+    suspectApis:    Array.from(new Set(suspectApis)).slice(0, 4),
+    suspectQueries: Array.from(new Set(suspectQueries)).slice(0, 3),
     memoryPressure,
     mainThreadBlock,
     recommendation: recommendations,
@@ -161,7 +161,7 @@ export function useReproduceTrace(sendCommand?: (cmd: object) => void) {
         sessionId:   sessionId ?? 'demo',
         stepDelayMs: STEP_INTERVAL_MS,
         // Send a compact summary of event types only, not full payloads
-        eventTypes:  [...new Set(allEvents.map((e: any) => e.type))],
+        eventTypes:  Array.from(new Set(allEvents.map((e: any) => e.type))),
         totalEvents: allEvents.length,
       })
     }

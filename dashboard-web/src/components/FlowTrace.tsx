@@ -108,7 +108,7 @@ function ScreenCard({ screen, isFirst }: { screen: typeof DEMO_SCREENS[0]; isFir
                   </div>
                   {item.error ? (
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#2a1a1a] text-red-400 border border-red-900">
-                      {item.ms !== null ? `${(item.ms / 1000).toFixed(1)}s` : item.errLabel}
+                      {item.ms !== null ? `${(item.ms / 1000).toFixed(1)}s` : (item as any).errLabel}
                     </span>
                   ) : b ? (
                     <span className={`text-[10px] font-mono px-2 py-0.5 rounded ${b.cls}`}>{b.label}</span>

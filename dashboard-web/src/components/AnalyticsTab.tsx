@@ -2,6 +2,8 @@
 import { useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts'
 import { useAnalytics } from '@/hooks/useAnalytics'
+import FaceAuthMetrics from './FaceAuthMetrics'
+import { REFRESH_OPTIONS } from '@/hooks/useAutoRefresh'
 
 const TIER_COLOR: Record<string, string> = {
   excellent: '#22c55e',
@@ -18,7 +20,8 @@ const PERF_LABEL: Record<string, string> = {
 }
 
 export function AnalyticsTab({ events, allEvents }: { events: any[]; allEvents: any[] }) {
-  const { topEvents, hourly, correlation, loading, reload, getFunnel } = useAnalytics()
+  const [refreshMs, setRefreshMs]         = useState(30_000)
+  const { topEvents, hourly, correlation, impact, loading, reload, getFunnel, lastRefresh } = useAnalytics(refreshMs)
   const [funnelName, setFunnelName]   = useState('')
   const [funnelSteps, setFunnelSteps] = useState<any[]>([])
   const [funnelLoading, setFunnelLoading] = useState(false)
@@ -45,12 +48,117 @@ export function AnalyticsTab({ events, allEvents }: { events: any[]; allEvents: 
             Performance correlation on every event
           </div>
         </div>
-        <button
-          onClick={reload}
-          className="text-[10px] font-mono text-gray-500 hover:text-gray-300 border border-[#2a2a2a] px-3 py-1.5 rounded transition-colors"
-        >
-          {loading ? 'LOADING...' : 'REFRESH'}
-        </button>
+        <div className="flex items-center gap-2">
+          {lastRefresh && (
+            <span className="text-[9px] font-mono text-gray-700">
+              {lastRefresh.toLocaleTimeString('en-GB', { hour12: false })}
+            </span>
+          )}
+          <select
+            value={refreshMs}
+            onChange={e => setRefreshMs(Number(e.target.value))}
+            className="bg-[#161616] border border-[#2a2a2a] text-[10px] font-mono text-gray-400 rounded px-2 py-1.5 outline-none"
+          >
+            {REFRESH_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>
+                {o.value === 0 ? 'AUTO: OFF' : `AUTO: ${o.label}`}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={reload}
+            className="text-[10px] font-mono text-gray-500 hover:text-gray-300 border border-[#2a2a2a] px-3 py-1.5 rounded transition-colors"
+          >
+            {loading ? 'LOADING...' : 'REFRESH'}
+          </button>
+        </div>
+      </div>
+
+      {/* PM → Developer impact brief */}
+      <div className="bg-[#111] border border-[#1e1e1e] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-[#1e1e1e] flex items-center justify-between">
+          <div>
+            <div className="text-[10px] font-mono text-gray-400 tracking-widest">IMPACT BRIEF</div>
+            <div className="text-[9px] font-mono text-gray-600 mt-0.5">PM-readable cause, business impact, and developer handoff</div>
+          </div>
+          <div className="text-[9px] font-mono text-gray-600">LAST 7 DAYS</div>
+        </div>
+
+        {!impact || impact.summary.events === 0 ? (
+          <div className="p-6 text-center text-[10px] font-mono text-gray-600">
+            {loading ? 'ANALYSING...' : 'NO IMPACT DATA YET — send analytics events with performance context'}
+          </div>
+        ) : (
+          <div className="p-4 space-y-4">
+            <div className="grid grid-cols-5 gap-3">
+              {[
+                { label: 'EVENTS', value: impact.summary.events, tone: 'text-gray-200' },
+                { label: 'USERS', value: impact.summary.users, tone: 'text-blue-400' },
+                { label: 'AVG PERF', value: impact.summary.avgPerf, tone: impact.summary.avgPerf >= 70 ? 'text-green-400' : 'text-yellow-400' },
+                { label: 'POOR PERF', value: impact.summary.poorPerfEvents, tone: 'text-yellow-400' },
+                { label: 'CRASH-AFFECTED', value: impact.summary.crashAffectedEvents, tone: 'text-red-400' },
+              ].map(m => (
+                <div key={m.label} className="border border-[#1e1e1e] rounded bg-[#0d0d0d] px-3 py-2">
+                  <div className="text-[9px] font-mono text-gray-600 tracking-widest">{m.label}</div>
+                  <div className={`text-lg font-black mt-1 ${m.tone}`}>{m.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {impact.insights.length === 0 ? (
+              <div className="border border-[#1e1e1e] rounded bg-[#0d0d0d] p-4 text-[10px] font-mono text-gray-600">
+                No major technical/product impact detected in this window.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {impact.insights.map(insight => {
+                  const color =
+                    insight.severity === 'critical' ? 'text-red-400 border-red-950 bg-red-950/10' :
+                    insight.severity === 'high' ? 'text-yellow-400 border-yellow-950 bg-yellow-950/10' :
+                    insight.severity === 'medium' ? 'text-blue-400 border-blue-950 bg-blue-950/10' :
+                    'text-green-400 border-green-950 bg-green-950/10'
+
+                  return (
+                    <div key={insight.id} className="border border-[#1e1e1e] rounded bg-[#0d0d0d] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-white truncate">{insight.title}</div>
+                          <div className="text-[10px] text-gray-400 mt-1 leading-relaxed">{insight.pmSummary}</div>
+                        </div>
+                        <span className={`text-[9px] font-mono border rounded px-2 py-1 ${color}`}>
+                          {insight.severity.toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mt-4">
+                        <div>
+                          <div className="text-[9px] font-mono text-gray-600 tracking-widest mb-1">LIKELY CAUSE</div>
+                          <div className="text-[10px] text-gray-300 leading-relaxed">{insight.likelyCause}</div>
+                        </div>
+                        <div>
+                          <div className="text-[9px] font-mono text-gray-600 tracking-widest mb-1">BUSINESS IMPACT</div>
+                          <div className="text-[10px] text-gray-300 leading-relaxed">{insight.businessImpact}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-[#1a1a1a]">
+                        <div className="text-[9px] font-mono text-gray-600 tracking-widest mb-2">DEVELOPER HANDOFF</div>
+                        <div className="space-y-1.5">
+                          {insight.developerHandoff.map((item, i) => (
+                            <div key={i} className="flex gap-2 text-[10px] text-gray-400 leading-relaxed">
+                              <span className="text-gray-700 font-mono">{i + 1}</span>
+                              <span>{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Insight cards */}
@@ -247,6 +355,11 @@ export function AnalyticsTab({ events, allEvents }: { events: any[]; allEvents: 
             </div>
           </div>
         )}
+      </div>
+
+      {/* Face-auth metrics */}
+      <div>
+        <FaceAuthMetrics events={allEvents} />
       </div>
 
       {/* Live event stream */}

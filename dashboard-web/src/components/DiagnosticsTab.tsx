@@ -348,7 +348,7 @@ export function DiagnosticsTab({ events, onReproduce, twinEvents, twinProfile, o
       
       <LiveApiCallsPanel 
         events={allEvents}
-        profile={activeProfile}
+        profile={activeProfile ?? null}
         isSimulating={!!twinEvents}
       />
       

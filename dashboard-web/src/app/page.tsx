@@ -17,10 +17,18 @@ import { AlertsTab }         from '@/components/AlertsTab'
 import { AdminPanel }        from '@/components/AdminPanel'
 import { LoginScreen }       from '@/components/LoginScreen'
 import { simulateEvents }     from '@/components/DeviceTwin'
+import RetentionTab          from '@/components/RetentionTab'
+import SegmentationTab       from '@/components/SegmentationTab'
+import ExperimentsTab        from '@/components/ExperimentsTab'
+import UserPathsTab          from '@/components/UserPathsTab'
+import SuperPropertiesPanel  from '@/components/SuperPropertiesPanel'
+import GrowthTab             from '@/components/GrowthTab'
+import PehchaanAutomation   from '@/components/PehchaanAutomation'
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080'
+const WS_URL  = process.env.NEXT_PUBLIC_WS_URL  || 'ws://localhost:8080'
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
 
-type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions' | 'alerts' | 'admin'
+type Tab = 'overview' | 'analytics' | 'flow' | 'network' | 'heatmap' | 'diagnostics' | 'sessions' | 'alerts' | 'retention' | 'segmentation' | 'experiments' | 'paths' | 'growth' | 'automation' | 'admin'
 
 const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
   {
@@ -98,6 +106,57 @@ const NAV: { id: Tab; label: string; icon: React.ReactNode }[] = [
         <path d="M8 2L14 13H2L8 2z" />
         <line x1="8" y1="7" x2="8" y2="10" />
         <circle cx="8" cy="11.5" r="0.6" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
+    id: 'retention', label: 'RETENTION',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M8 14A6 6 0 108 2" /><path d="M8 2v4l3 2" />
+      </svg>
+    ),
+  },
+  {
+    id: 'segmentation', label: 'SEGMENTS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="6" /><line x1="8" y1="2" x2="8" y2="14" /><line x1="2" y1="8" x2="14" y2="8" />
+      </svg>
+    ),
+  },
+  {
+    id: 'experiments', label: 'A/B TESTS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M5 2v5L2 13h12L11 7V2" /><line x1="5" y1="2" x2="11" y2="2" />
+      </svg>
+    ),
+  },
+  {
+    id: 'paths', label: 'USER PATHS',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="3" cy="8" r="2" /><circle cx="13" cy="4" r="2" /><circle cx="13" cy="12" r="2" />
+        <path d="M5 8h3l3-4M5 8h3l3 4" />
+      </svg>
+    ),
+  },
+  {
+    id: 'growth', label: 'GROWTH',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M2 13l4-5 3 2 5-7" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx="14" cy="3" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'automation', label: 'AUTOMATE',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="2.5" />
+        <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M3.2 12.8l1.4-1.4M11.4 4.6l1.4-1.4" />
       </svg>
     ),
   },
@@ -266,8 +325,14 @@ export default function Dashboard() {
                 {tab === 'heatmap'     && 'SCREEN HEATMAP'}
                 {tab === 'diagnostics' && 'DIAGNOSTICS'}
                 {tab === 'sessions'    && 'SESSION HISTORY'}
-                {tab === 'alerts'      && 'REGRESSION ALERTS'}
-                {tab === 'admin'       && 'ADMIN PANEL'}
+                {tab === 'alerts'        && 'REGRESSION ALERTS'}
+                {tab === 'retention'     && 'RETENTION COHORTS'}
+                {tab === 'segmentation'  && 'SEGMENTATION + SUPER PROPERTIES'}
+                {tab === 'experiments'   && 'A/B EXPERIMENTS'}
+                {tab === 'paths'         && 'USER PATHS & FLOW ANALYSIS'}
+                {tab === 'growth'        && 'GROWTH · INSTALLS · FRAUD ANALYTICS'}
+                {tab === 'automation'    && 'PEHCHAAN AUTOMATION · EXPERIMENTS · FRAUD · FUNNELS'}
+                {tab === 'admin'         && 'ADMIN PANEL'}
               </span>
             )}
           </div>
@@ -377,6 +442,33 @@ export default function Dashboard() {
 
           {tab === 'alerts' && (
             <AlertsTab />
+          )}
+
+          {tab === 'retention' && (
+            <RetentionTab projectId="demo-project" />
+          )}
+
+          {tab === 'segmentation' && (
+            <div className="space-y-5">
+              <SegmentationTab projectId="demo-project" />
+              <SuperPropertiesPanel projectId="demo-project" />
+            </div>
+          )}
+
+          {tab === 'experiments' && (
+            <ExperimentsTab projectId="demo-project" />
+          )}
+
+          {tab === 'paths' && (
+            <UserPathsTab projectId="demo-project" />
+          )}
+
+          {tab === 'growth' && (
+            <GrowthTab projectId="demo-project" />
+          )}
+
+          {tab === 'automation' && (
+            <PehchaanAutomation />
           )}
 
           {tab === 'admin' && isAdmin && (

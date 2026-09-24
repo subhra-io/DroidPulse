@@ -79,7 +79,7 @@ export function EventDebugPanel({ events }: EventDebugPanelProps) {
               ).map(([type, count]) => (
                 <div key={type} className="flex items-center justify-between text-[10px] font-mono">
                   <span className="text-gray-400">{type}</span>
-                  <span className="text-white font-bold">{count}</span>
+                  <span className="text-white font-bold">{count as number}</span>
                 </div>
               ))}
             </div>

@@ -24,6 +24,21 @@ data class CloudConfig(
     val appId: String = "",
     
     /**
+     * Optional device identifier for session metadata.
+     */
+    val deviceId: String? = null,
+    
+    /**
+     * Optional device latitude for location tracking.
+     */
+    val deviceLatitude: Double? = null,
+    
+    /**
+     * Optional device longitude for location tracking.
+     */
+    val deviceLongitude: Double? = null,
+    
+    /**
      * Human-readable app name for dashboard
      */
     val appName: String = "",

@@ -116,9 +116,11 @@ function SessionDrawer({
         {/* meta grid */}
         <div className="grid grid-cols-3 gap-3 px-6 py-4 border-b border-[#1e1e1e]">
           {[
+            { label: 'DEVICE ID', value: session.device_id ?? '—' },
             { label: 'DEVICE',    value: session.device_model ?? '—' },
             { label: 'VERSION',   value: session.app_version  ?? '—' },
             { label: 'OS',        value: session.os_version   ?? '—' },
+            { label: 'LOCATION',  value: session.latitude != null && session.longitude != null ? `${session.latitude.toFixed(5)}, ${session.longitude.toFixed(5)}` : '—' },
             { label: 'EVENTS',    value: String(session.event_count ?? 0) },
             { label: 'CRASHES',   value: String(session.crash_count ?? 0) },
             { label: 'STARTUP',   value: session.startup_ms ? `${session.startup_ms}ms` : '—' },
@@ -205,6 +207,7 @@ export function SessionHistoryTab() {
   const filtered = sessions.filter(s =>
     !search ||
     s.id.includes(search) ||
+    (s.device_id ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (s.device_model ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (s.app_version  ?? '').toLowerCase().includes(search.toLowerCase())
   )
